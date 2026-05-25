@@ -4,6 +4,7 @@ import { Stack, router, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useGameStore } from '../../../stores/gameStore';
+import EditRulesModal from '../../../components/EditRulesModal';
 import { supabase } from '../../../lib/supabase';
 
 const TEAM_ID = '00000000-0000-0000-0000-000000000001';
@@ -22,6 +23,7 @@ interface GameStatuses {
 export default function LineupsScreen() {
   const { games, selectedGame, activeLineupId, loading, fetchGames, selectGame } = useGameStore();
   const [gameStatuses, setGameStatuses] = useState<Record<string, GameStatuses>>({});
+  const [rulesOpen, setRulesOpen] = useState(false);
 
   useFocusEffect(useCallback(() => { fetchGames(TEAM_ID); }, []));
   useFocusEffect(useCallback(() => { if (games.length > 0) fetchLineupStatuses(); }, [games]));
@@ -114,7 +116,16 @@ export default function LineupsScreen() {
       </View>
 
       {/* Lineup cards */}
-      <View style={{ flex: 1, paddingHorizontal: 16, justifyContent: 'center', gap: 12 }}>
+      <View style={{ flex: 1, paddingHorizontal: 16 }}>
+        <View style={{ flex: 1, justifyContent: 'center', gap: 12 }}>
+        {/* Rules cogwheel — left-aligned, sits just above Batting Order card */}
+        <TouchableOpacity
+          onPress={() => setRulesOpen(true)}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          style={{ alignSelf: 'flex-start', padding: 4, marginBottom: -4 }}
+        >
+          <Ionicons name={'settings-outline' as any} size={20} color="#9CA3AF" />
+        </TouchableOpacity>
         <TouchableOpacity
           onPress={() => hasGame && router.push('/lineups/batting')}
           activeOpacity={hasGame ? 0.7 : 1}
@@ -160,7 +171,10 @@ export default function LineupsScreen() {
           <StatusIcon status={selectedStatuses?.defensive} />
           <Ionicons name={'chevron-forward' as any} size={20} color="#D1D5DB" />
         </TouchableOpacity>
+        </View>
       </View>
+
+      <EditRulesModal visible={rulesOpen} onClose={() => setRulesOpen(false)} />
     </SafeAreaView>
   );
 }

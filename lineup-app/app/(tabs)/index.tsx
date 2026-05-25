@@ -6,6 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import PlayerCard from '../../components/PlayerCard';
+import EditRulesModal from '../../components/EditRulesModal';
 import { useTeamStore } from '../../stores/teamStore';
 import { supabase } from '../../lib/supabase';
 
@@ -159,6 +160,7 @@ export default function RosterScreen() {
   const { team, players, loading, error, fetchTeam } = useTeamStore();
   const [editTeamOpen, setEditTeamOpen] = useState(false);
   const [editRosterOpen, setEditRosterOpen] = useState(false);
+  const [editRulesOpen, setEditRulesOpen] = useState(false);
 
   useEffect(() => { fetchTeam(TEAM_ID); }, []);
 
@@ -169,6 +171,7 @@ export default function RosterScreen() {
   function handleAction(label: string) {
     if (label === 'Edit Team Info') setEditTeamOpen(true);
     else if (label === 'Edit Roster') setEditRosterOpen(true);
+    else if (label === 'Edit Rules') setEditRulesOpen(true);
   }
 
   return (
@@ -253,6 +256,10 @@ export default function RosterScreen() {
       <EditRosterModal
         visible={editRosterOpen}
         onClose={() => setEditRosterOpen(false)}
+      />
+      <EditRulesModal
+        visible={editRulesOpen}
+        onClose={() => setEditRulesOpen(false)}
       />
     </SafeAreaView>
   );

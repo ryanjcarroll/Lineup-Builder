@@ -12,12 +12,14 @@ import {
 import Svg, { Polygon as SvgPolygon, Line, Path, Rect as SvgRect } from 'react-native-svg';
 import { Stack, useNavigation } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import GenderCorner from '../../../components/GenderCorner';
+import { DEFAULT_RULES } from '../../../components/EditRulesModal';
 import { useTeamStore } from '../../../stores/teamStore';
 import { useGameStore } from '../../../stores/gameStore';
 import { supabase } from '../../../lib/supabase';
 import { Player } from '../../../types/database';
 
-const TEAM_ID   = '00000000-0000-0000-0000-000000000001';
+const TEAM_ID       = '00000000-0000-0000-0000-000000000001';
 const INNINGS_COUNT = 6;
 const BUTTON_W  = 70;
 const BUTTON_H  = 48;
@@ -25,8 +27,6 @@ const CONTAINER_H = 340;
 const HORIZONTAL_MARGIN = 32;
 const NAME_COL_W = 88;
 const WARN_COL_W = 22;
-const MIN_WOMEN_ON_FIELD = 4;
-
 const FIELD_POSITIONS = [
   { key: 'LF', cx: 11, cy: 17 },
   { key: 'LC', cx: 35, cy: 12 },
@@ -130,8 +130,9 @@ function serializeAssignments(assignments: Record<number, InningMap>): string {
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function PositionsScreen() {
-  const { players, fetchTeam } = useTeamStore();
+  const { team, players, fetchTeam } = useTeamStore();
   const { activeLineupId } = useGameStore();
+  const minWomenField = team?.rules?.min_female_in_field ?? DEFAULT_RULES.min_female_in_field;
   const navigation = useNavigation();
   const { width: screenWidth } = useWindowDimensions();
   const containerW = screenWidth - HORIZONTAL_MARGIN;
@@ -254,7 +255,7 @@ export default function PositionsScreen() {
     if (!isInningFull(inning)) return [];
     const placed = Object.values(inningAssignments[inning]).filter(Boolean) as Player[];
     const warnings: string[] = [];
-    if (placed.filter(p => p.gender === 'F').length < MIN_WOMEN_ON_FIELD) {
+    if (placed.filter(p => p.gender === 'F').length < minWomenField) {
       warnings.push('Not enough women in field');
     }
     return warnings;
@@ -427,10 +428,12 @@ export default function PositionsScreen() {
                   borderRadius: 8, borderWidth: 2,
                   borderStyle: isTarget || isGrayed || (isSelected && !player) ? 'dashed' : 'solid',
                   alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4,
+                  overflow: 'hidden',
                   backgroundColor: posBgColor(isSelected, !!player, isTarget, aPref, isGrayed),
                   borderColor:     posBorderColor(isSelected, !!player, isTarget, aPref, isGrayed, gPref),
                 }}
               >
+                {player && <GenderCorner gender={player.gender} size={8} />}
                 <Text style={{ fontSize: 10, fontWeight: '600', color: posLabelColor(isSelected, !!player, isTarget, aPref, isGrayed, gPref) }}>
                   {key}
                 </Text>
@@ -507,18 +510,14 @@ export default function PositionsScreen() {
                 <TouchableOpacity
                   onPress={() => handleCellPress(player, currentInning)}
                   activeOpacity={0.6}
-                  style={{ width: NAME_COL_W }}
+                  style={{ width: NAME_COL_W, overflow: 'hidden' }}
                   className="flex-row items-center gap-1 px-3 py-2.5"
                 >
+                  <GenderCorner gender={player.gender} size={8} />
                   <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: dotColor, flexShrink: 0 }} />
                   <Text className="text-sm font-medium text-gray-900 flex-shrink" numberOfLines={1}>
                     {player.name.split(' ')[0]}
                   </Text>
-                  <View className={`px-1 rounded-full flex-shrink-0 ${player.gender === 'F' ? 'bg-pink-100' : 'bg-blue-100'}`}>
-                    <Text className={`text-xs font-semibold ${player.gender === 'F' ? 'text-pink-700' : 'text-blue-700'}`}>
-                      {player.gender === 'F' ? 'W' : 'M'}
-                    </Text>
-                  </View>
                 </TouchableOpacity>
 
                 {/* Inning cells */}

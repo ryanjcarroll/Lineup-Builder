@@ -8,6 +8,9 @@ export interface TeamRules {
   min_female_in_field: number;
   max_consecutive_male_batting: number;
   field_positions: string[];
+  // Attendance / batting rules
+  min_players_to_play: number;
+  min_women_to_play: number;
 }
 
 export interface Team {
