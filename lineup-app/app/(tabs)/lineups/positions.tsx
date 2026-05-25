@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -10,14 +10,14 @@ import {
   Alert,
 } from 'react-native';
 import Svg, { Polygon as SvgPolygon, Line, Path, Rect as SvgRect } from 'react-native-svg';
-import { Stack } from 'expo-router';
+import { Stack, useNavigation } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTeamStore } from '../../../stores/teamStore';
+import { useGameStore } from '../../../stores/gameStore';
 import { supabase } from '../../../lib/supabase';
 import { Player } from '../../../types/database';
 
 const TEAM_ID   = '00000000-0000-0000-0000-000000000001';
-const LINEUP_ID = '30000000-0000-0000-0000-000000000001';
 const INNINGS_COUNT = 6;
 const BUTTON_W  = 70;
 const BUTTON_H  = 48;
@@ -114,10 +114,25 @@ function cellColors(pos: string | null): { text: string; bg: string } {
   return { text: '#15803D', bg: '#DCFCE7' };
 }
 
+// ─── Serialize assignments for change detection (only non-null entries) ───────
+
+function serializeAssignments(assignments: Record<number, InningMap>): string {
+  const result: Record<number, Record<string, string>> = {};
+  for (const [inning, map] of Object.entries(assignments)) {
+    const filled = Object.entries(map).filter(([, p]) => p !== null);
+    if (filled.length > 0) {
+      result[Number(inning)] = Object.fromEntries(filled.map(([pos, p]) => [pos, p!.id]));
+    }
+  }
+  return JSON.stringify(result);
+}
+
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function PositionsScreen() {
   const { players, fetchTeam } = useTeamStore();
+  const { activeLineupId } = useGameStore();
+  const navigation = useNavigation();
   const { width: screenWidth } = useWindowDimensions();
   const containerW = screenWidth - HORIZONTAL_MARGIN;
 
@@ -127,7 +142,48 @@ export default function PositionsScreen() {
   const [benchSelectedPlayer, setBenchSelectedPlayer] = useState<Player | null>(null);
   const [saving, setSaving] = useState(false);
 
+  // Track saved state for unsaved-changes detection
+  const savedAssignmentsJson = useRef<string>('{}');
+  const hasUnsavedChanges = useRef(false);
+  hasUnsavedChanges.current = serializeAssignments(inningAssignments) !== savedAssignmentsJson.current;
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('beforeRemove', (e: any) => {
+      if (!hasUnsavedChanges.current) return;
+      e.preventDefault();
+      Alert.alert(
+        'Unsaved Changes',
+        'You have unsaved changes to the defensive alignment. Leave without saving?',
+        [
+          { text: 'Keep Editing', style: 'cancel' },
+          { text: 'Leave', style: 'destructive', onPress: () => navigation.dispatch(e.data.action) },
+        ]
+      );
+    });
+    return unsubscribe;
+  }, [navigation]);
+
   useEffect(() => { if (players.length === 0) fetchTeam(TEAM_ID); }, []);
+
+  // Load existing lineup slots when lineup changes
+  useEffect(() => {
+    if (!activeLineupId) { setInningAssignments({ 1: emptyInning() }); return; }
+    supabase
+      .from('lineup_slots')
+      .select('inning, position, player_id')
+      .eq('lineup_id', activeLineupId)
+      .then(({ data }) => {
+        if (!data || data.length === 0) return;
+        const built: Record<number, InningMap> = {};
+        data.forEach(({ inning, position, player_id }) => {
+          if (!built[inning]) built[inning] = emptyInning();
+          const player = players.find((p) => p.id === player_id);
+          if (player) built[inning][position] = player;
+        });
+        savedAssignmentsJson.current = serializeAssignments(built);
+        setInningAssignments(built);
+      });
+  }, [activeLineupId, players]);
 
   const assignments = inningAssignments[currentInning] ?? emptyInning();
 
@@ -277,16 +333,18 @@ export default function PositionsScreen() {
   }
 
   async function handleSave() {
+    if (!activeLineupId) return;
     setSaving(true);
     try {
-      await supabase.from('lineup_slots').delete().eq('lineup_id', LINEUP_ID);
+      await supabase.from('lineup_slots').delete().eq('lineup_id', activeLineupId);
       const rows: { lineup_id: string; inning: number; position: string; player_id: string }[] = [];
       for (const [innStr, map] of Object.entries(inningAssignments)) {
         for (const [pos, player] of Object.entries(map)) {
-          if (player) rows.push({ lineup_id: LINEUP_ID, inning: Number(innStr), position: pos, player_id: player.id });
+          if (player) rows.push({ lineup_id: activeLineupId, inning: Number(innStr), position: pos, player_id: player.id });
         }
       }
       if (rows.length) await supabase.from('lineup_slots').insert(rows as any);
+      savedAssignmentsJson.current = serializeAssignments(inningAssignments);
     } finally {
       setSaving(false);
     }
@@ -311,7 +369,7 @@ export default function PositionsScreen() {
         options={{
           title: 'Defensive Alignment',
           headerRight: () => (
-            <TouchableOpacity onPress={handleSave} disabled={saving} style={{ paddingHorizontal: 4 }}>
+            <TouchableOpacity onPress={handleSave} disabled={saving || !activeLineupId} style={{ paddingHorizontal: 4, opacity: activeLineupId ? 1 : 0.4 }}>
               {saving
                 ? <ActivityIndicator color="white" size="small" />
                 : <Text style={{ color: 'white', fontWeight: '700', fontSize: 16 }}>Save</Text>}
