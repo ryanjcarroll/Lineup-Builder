@@ -132,7 +132,7 @@ export default function TabLayout() {
         headerTitleStyle: { fontWeight: '700' },
       }}
     >
-      <Tabs.Screen name="index" options={{ title: 'Roster' }} />
+      <Tabs.Screen name="index" options={{ headerShown: false }} />
       <Tabs.Screen name="schedule" options={{ title: 'Schedule' }} />
       <Tabs.Screen name="lineups" options={{ headerShown: false }} />
       <Tabs.Screen name="profile" options={{ title: 'Profile' }} />
