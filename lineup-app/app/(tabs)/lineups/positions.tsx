@@ -12,9 +12,9 @@ import {
 import Svg, { Polygon as SvgPolygon, Line, Path, Rect as SvgRect } from 'react-native-svg';
 import { Stack } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useTeamStore } from '../stores/teamStore';
-import { supabase } from '../lib/supabase';
-import { Player } from '../types/database';
+import { useTeamStore } from '../../../stores/teamStore';
+import { supabase } from '../../../lib/supabase';
+import { Player } from '../../../types/database';
 
 const TEAM_ID   = '00000000-0000-0000-0000-000000000001';
 const LINEUP_ID = '30000000-0000-0000-0000-000000000001';
@@ -306,8 +306,19 @@ export default function PositionsScreen() {
     : players;
 
   return (
-    <SafeAreaView className="flex-1 bg-gray-50" edges={['bottom']}>
-      <Stack.Screen options={{ title: 'Defensive Alignment' }} />
+    <SafeAreaView className="flex-1 bg-gray-50" edges={[]}>
+      <Stack.Screen
+        options={{
+          title: 'Defensive Alignment',
+          headerRight: () => (
+            <TouchableOpacity onPress={handleSave} disabled={saving} style={{ paddingHorizontal: 4 }}>
+              {saving
+                ? <ActivityIndicator color="white" size="small" />
+                : <Text style={{ color: 'white', fontWeight: '700', fontSize: 16 }}>Save</Text>}
+            </TouchableOpacity>
+          ),
+        }}
+      />
 
       {/* ── Fixed top: tabs + diamond + hint ─────────────────────────────── */}
       <View>
@@ -509,12 +520,6 @@ export default function PositionsScreen() {
         </ScrollView>
       </View>
 
-      {/* ── Save ─────────────────────────────────────────────────────────── */}
-      <View className="px-4 pb-4 pt-2 bg-white border-t border-gray-100">
-        <TouchableOpacity onPress={handleSave} disabled={saving} className="bg-brand rounded-xl py-3 items-center">
-          {saving ? <ActivityIndicator color="white" /> : <Text className="text-white font-bold text-base">Save Alignment</Text>}
-        </TouchableOpacity>
-      </View>
     </SafeAreaView>
   );
 }

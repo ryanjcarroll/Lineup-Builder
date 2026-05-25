@@ -1,26 +1,29 @@
 import { useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
-import { Stack, router } from 'expo-router';
+import { useNavigation } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import PlayerCard from '../components/PlayerCard';
-import { useTeamStore } from '../stores/teamStore';
+import PlayerCard from '../../components/PlayerCard';
+import { useTeamStore } from '../../stores/teamStore';
 
 const TEAM_ID = '00000000-0000-0000-0000-000000000001';
 
 export default function RosterScreen() {
   const { team, players, loading, error, fetchTeam } = useTeamStore();
+  const navigation = useNavigation();
 
   useEffect(() => {
     fetchTeam(TEAM_ID);
   }, []);
+
+  useEffect(() => {
+    if (team) navigation.setOptions({ title: team.name });
+  }, [team]);
 
   const maleCount = players.filter((p) => p.gender === 'M').length;
   const femaleCount = players.filter((p) => p.gender === 'F').length;
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={['bottom']}>
-      <Stack.Screen options={{ title: team ? `${team.name} — Roster` : 'Roster' }} />
-
       <View className="bg-white border-b border-gray-200 px-4 py-3 flex-row items-center justify-between">
         <Text className="text-gray-600 text-sm">
           {loading ? (
@@ -35,17 +38,9 @@ export default function RosterScreen() {
             </>
           )}
         </Text>
-        <View className="flex-row gap-2">
-          <TouchableOpacity className="bg-brand px-3 py-1.5 rounded-lg">
-            <Text className="text-white text-sm font-semibold">+ Add Player</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => router.push('/batting')}
-            className="bg-gray-800 px-3 py-1.5 rounded-lg"
-          >
-            <Text className="text-white text-sm font-semibold">Lineup →</Text>
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity className="bg-brand px-3 py-1.5 rounded-lg">
+          <Text className="text-white text-sm font-semibold">+ Add Player</Text>
+        </TouchableOpacity>
       </View>
 
       {error ? (

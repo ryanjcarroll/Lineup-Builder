@@ -8,11 +8,11 @@ import {
   FlatList,
   ActivityIndicator,
 } from 'react-native';
-import { Stack, router } from 'expo-router';
+import { Stack } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useTeamStore } from '../stores/teamStore';
-import { supabase } from '../lib/supabase';
-import { Player } from '../types/database';
+import { useTeamStore } from '../../../stores/teamStore';
+import { supabase } from '../../../lib/supabase';
+import { Player } from '../../../types/database';
 
 const TEAM_ID = '00000000-0000-0000-0000-000000000001';
 const LINEUP_ID = '30000000-0000-0000-0000-000000000001';
@@ -89,7 +89,18 @@ export default function BattingOrderScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={['bottom']}>
-      <Stack.Screen options={{ title: 'Batting Order' }} />
+      <Stack.Screen
+        options={{
+          title: 'Batting Order',
+          headerRight: () => (
+            <TouchableOpacity onPress={handleSave} disabled={saving} style={{ paddingHorizontal: 4 }}>
+              {saving
+                ? <ActivityIndicator color="white" size="small" />
+                : <Text style={{ color: 'white', fontWeight: '700', fontSize: 16 }}>Save</Text>}
+            </TouchableOpacity>
+          ),
+        }}
+      />
 
       <ScrollView
         className="flex-1"
@@ -165,26 +176,6 @@ export default function BattingOrderScreen() {
           );
         })}
       </ScrollView>
-
-      <View className="px-4 pb-4 pt-2 bg-white border-t border-gray-100 flex-row gap-3">
-        <TouchableOpacity
-          onPress={handleSave}
-          disabled={saving}
-          className="flex-1 border border-brand rounded-xl py-3 items-center"
-        >
-          {saving ? (
-            <ActivityIndicator color="#2563EB" />
-          ) : (
-            <Text className="text-brand font-bold text-base">Save</Text>
-          )}
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => router.push('/positions')}
-          className="flex-1 bg-brand rounded-xl py-3 items-center"
-        >
-          <Text className="text-white font-bold text-base">Defense →</Text>
-        </TouchableOpacity>
-      </View>
 
       <Modal visible={pickerOpen} transparent animationType="slide">
         <View className="flex-1 justify-end">
