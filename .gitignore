@@ -1,0 +1,53 @@
+# ─── Dependencies ────────────────────────────────────────────────────────────
+node_modules/
+
+# ─── Environment & Secrets ───────────────────────────────────────────────────
+# Never commit API keys (Supabase, Anthropic, RevenueCat)
+.env
+.env.local
+.env.*.local
+*.env
+!.env.example
+
+# ─── Expo / React Native ─────────────────────────────────────────────────────
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Generated native project folders (only committed for bare workflow; we use managed)
+/lineup-app/ios
+/lineup-app/android
+.kotlin/
+
+# Metro bundler
+.metro-health-check*
+
+# ─── Supabase ────────────────────────────────────────────────────────────────
+# Local Supabase dev container data & config
+.supabase/
+supabase/.temp/
+
+# ─── Native Signing & Certificates ──────────────────────────────────────────
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.pem
+
+# ─── Build & Cache Artifacts ─────────────────────────────────────────────────
+build/
+*.tsbuildinfo
+*.orig.*
+
+# ─── Logs ────────────────────────────────────────────────────────────────────
+*.log
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# ─── OS Noise ────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini

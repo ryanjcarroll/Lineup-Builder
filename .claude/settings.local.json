@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem \"c:\\\\Users\\\\ryanc\\\\OneDrive\\\\Documents\\\\GitHub_Personal\\\\Lineup-Builder\\\\lineup-app\" -Force)",
+      "Bash(npx create-expo-app@latest . --template blank-typescript)",
+      "WebFetch(domain:www.nativewind.dev)",
+      "WebFetch(domain:docs.expo.dev)",
+      "Bash(npx expo *)",
+      "Bash(npm install *)",
+      "Bash(node -e \"const pkg = require\\('./node_modules/nativewind/package.json'\\); console.log\\(pkg.version\\)\")",
+      "Bash(npx kill-port *)"
+    ]
+  }
+}
