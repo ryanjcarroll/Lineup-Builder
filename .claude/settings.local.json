@@ -8,7 +8,13 @@
       "Bash(npx expo *)",
       "Bash(npm install *)",
       "Bash(node -e \"const pkg = require\\('./node_modules/nativewind/package.json'\\); console.log\\(pkg.version\\)\")",
-      "Bash(npx kill-port *)"
+      "Bash(npx kill-port *)",
+      "Bash(node -e \"require\\('./metro.config.js'\\); console.log\\('metro.config.js OK'\\)\")",
+      "Bash(ipconfig)",
+      "Bash(grep -v \"^--$\")",
+      "Bash(ip addr *)",
+      "Bash(npm info *)",
+      "Bash(node -e \"const chunks=[]; process.stdin.on\\('data',c=>chunks.push\\(c\\)\\); process.stdin.on\\('end',\\(\\)=>{ const d=JSON.parse\\(chunks.join\\(''\\)\\); const last=d['dist-tags']||{}; const v=last.latest||''; console.log\\('latest 54.x tag, checking versions...'\\); const versions=Object.keys\\(d.versions||{}\\).filter\\(v=>v.startsWith\\('54.'\\)\\).slice\\(-1\\); console.log\\('Latest 54.x:', versions[0]\\); const pkg=d.versions[versions[0]]; console.log\\('react-native dep:', pkg && pkg.dependencies && pkg.dependencies['react-native']\\); }\\)\")"
     ]
   }
 }
