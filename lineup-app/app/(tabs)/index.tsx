@@ -14,6 +14,33 @@ import { supabase } from '../../lib/supabase';
 
 const TEAM_ID = '00000000-0000-0000-0000-000000000001';
 
+// One-time migration: ensure any player with LC or RC also has all three (LC, CF, RC)
+// with the same preference, since CF is now the canonical "center outfield" group selector.
+async function migrateOutfieldPreferences() {
+  const { data } = await (supabase.from('position_preferences') as any)
+    .select('player_id, position, preference')
+    .in('position', ['LC', 'RC', 'CF']);
+  if (!data || (data as any[]).length === 0) return;
+
+  const byPlayer = new Map<string, Partial<Record<'LC' | 'CF' | 'RC', string>>>();
+  for (const row of data as any[]) {
+    if (!byPlayer.has(row.player_id)) byPlayer.set(row.player_id, {});
+    byPlayer.get(row.player_id)![row.position as 'LC' | 'CF' | 'RC'] = row.preference;
+  }
+
+  const upserts: any[] = [];
+  for (const [playerId, prefs] of byPlayer.entries()) {
+    const pref = prefs.LC ?? prefs.CF ?? prefs.RC;
+    if (!pref) continue;
+    for (const pos of ['LC', 'CF', 'RC'] as const) {
+      if (!prefs[pos]) upserts.push({ player_id: playerId, position: pos, preference: pref });
+    }
+  }
+  if (upserts.length > 0) {
+    await (supabase.from('position_preferences') as any).upsert(upserts);
+  }
+}
+
 const AVATAR_COLORS = [
   '#3B82F6', '#8B5CF6', '#EC4899', '#F97316',
   '#14B8A6', '#6366F1', '#EF4444', '#0EA5E9',
@@ -53,7 +80,7 @@ function EditTeamModal({ visible, onClose, onSaved }: {
     if (!name.trim()) return;
     setSaving(true);
     try {
-      await supabase.from('teams').update({ name: name.trim() }).eq('id', TEAM_ID);
+      await (supabase.from('teams') as any).update({ name: name.trim() }).eq('id', TEAM_ID);
       onSaved();
       onClose();
     } finally {
@@ -267,7 +294,10 @@ export default function RosterScreen() {
   const [editRulesOpen, setEditRulesOpen] = useState(false);
   const [editStrategiesOpen, setEditStrategiesOpen] = useState(false);
 
-  useEffect(() => { fetchTeam(TEAM_ID); }, []);
+  useEffect(() => {
+    fetchTeam(TEAM_ID);
+    migrateOutfieldPreferences().then(() => fetchTeam(TEAM_ID));
+  }, []);
 
   const maleCount   = players.filter((p) => p.gender === 'M').length;
   const femaleCount = players.filter((p) => p.gender === 'F').length;

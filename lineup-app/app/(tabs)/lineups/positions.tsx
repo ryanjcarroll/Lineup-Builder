@@ -263,7 +263,7 @@ export default function PositionsScreen() {
 
   const maxField = team?.rules?.players_in_field ?? DEFAULT_RULES.players_in_field;
   const womenInRoster = rosterPlayers.filter(p => p.gender === 'F').length;
-  const fieldersAllowed = Math.min(maxField, womenInRoster + maxMenField);
+  const fieldersAllowed = Math.min(maxField, womenInRoster + maxMenField, rosterPlayers.length);
   const teamStrategies = team?.rules?.strategies as Record<number, string[]> | undefined;
   const activePositionKeys = teamStrategies?.[fieldersAllowed] ?? DEFAULT_STRATEGIES[fieldersAllowed] ?? FIELD_POSITIONS.map(p => p.key);
   const activeFieldPositions = FIELD_POSITIONS.filter(p => activePositionKeys.includes(p.key));

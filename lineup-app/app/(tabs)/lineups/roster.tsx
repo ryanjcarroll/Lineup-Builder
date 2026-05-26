@@ -74,23 +74,22 @@ export default function GameRosterScreen() {
     if (!selectedGame) return;
     setLoading(true);
     try {
-      const { data: rosterRows } = await supabase
-        .from('game_roster')
+      const { data: rosterRows } = await (supabase.from('game_roster') as any)
         .select('player_id, is_guest')
         .eq('game_id', selectedGame.id);
 
-      const hasExistingRoster = rosterRows?.some((r) => !r.is_guest) ?? false;
+      const hasExistingRoster = rosterRows?.some((r: any) => !r.is_guest) ?? false;
 
       let attendingIds: Set<string>;
       if (!hasExistingRoster) {
         attendingIds = new Set(players.map((p) => p.id));
       } else {
         attendingIds = new Set(
-          rosterRows!.filter((r) => !r.is_guest).map((r) => r.player_id)
+          rosterRows!.filter((r: any) => !r.is_guest).map((r: any) => r.player_id)
         );
       }
 
-      const subIds = rosterRows?.filter((r) => r.is_guest).map((r) => r.player_id) ?? [];
+      const subIds = rosterRows?.filter((r: any) => r.is_guest).map((r: any) => r.player_id) ?? [];
       let subPlayers: Player[] = [];
       if (subIds.length > 0) {
         const { data } = await supabase
@@ -205,7 +204,7 @@ export default function GameRosterScreen() {
   const maxMenField = team?.rules?.max_male_in_field ?? DEFAULT_RULES.max_male_in_field;
   const allAttending = [...players.filter((p) => attending.has(p.id)), ...subs];
   const womenAttending = allAttending.filter((p) => p.gender === 'F').length;
-  const fieldersAllowed = Math.min(maxField, womenAttending + maxMenField);
+  const fieldersAllowed = Math.min(maxField, womenAttending + maxMenField, allAttending.length);
   const fieldersReduced = fieldersAllowed < maxField;
 
   return (

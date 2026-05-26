@@ -3,7 +3,9 @@ import {
   View, Text, TextInput, TouchableOpacity, ActivityIndicator,
 } from 'react-native';
 
-const FIELD_POSITIONS_ALL = ['LF', 'LC', 'RC', 'RF', 'SS', '2B', '3B', '1B', 'P', 'C'];
+// CF represents the outfield-center group: tapping it sets LC, CF, and RC together
+const FIELD_POSITIONS_ALL = ['LF', 'CF', 'RF', 'SS', '2B', '3B', '1B', 'P', 'C'];
+const CF_GROUP = ['LC', 'CF', 'RC'] as const;
 
 export type PosPrefs = Record<string, 'preferred' | 'avoid' | null>;
 
@@ -21,8 +23,12 @@ export default function AddPlayerForm({ onSubmit, namePlaceholder = 'Player name
 
   function togglePref(pos: string) {
     setPosPrefs((prev) => {
-      const cur = prev[pos];
-      return { ...prev, [pos]: !cur ? 'preferred' : cur === 'preferred' ? 'avoid' : null };
+      const cur = prev[pos] ?? null;
+      const next: 'preferred' | 'avoid' | null = !cur ? 'preferred' : cur === 'preferred' ? 'avoid' : null;
+      if (pos === 'CF') {
+        return { ...prev, LC: next, CF: next, RC: next };
+      }
+      return { ...prev, [pos]: next };
     });
   }
 
