@@ -255,7 +255,7 @@ export default function ScheduleScreen() {
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
           <View style={{ flex: 1, justifyContent: 'flex-end' }}>
             <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setPendingDate(null)} />
-            <View style={{ backgroundColor: 'white', borderTopLeftRadius: 20, borderTopRightRadius: 20 }}>
+            <View style={{ backgroundColor: '#F3F4F6', borderTopLeftRadius: 20, borderTopRightRadius: 20 }}>
               <View style={{ width: 40, height: 4, backgroundColor: '#E5E7EB', borderRadius: 2, alignSelf: 'center', marginTop: 12 }} />
               <Text style={{
                 fontSize: 17, fontWeight: '700', color: '#111827',

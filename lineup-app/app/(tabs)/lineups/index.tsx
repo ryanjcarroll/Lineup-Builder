@@ -315,6 +315,7 @@ function StatusIcon({ status, roster }: { status: SlotStatus | undefined; roster
   if (roster) {
     if (status === 'complete') return <Ionicons name={'lock-closed' as any}      size={20} color="#16A34A" />;
     if (status === 'partial')  return <Ionicons name={'lock-open-outline' as any} size={20} color="#2563EB" />;
+    if (status === 'empty')    return <Ionicons name={'lock-open-outline' as any} size={20} color="#9CA3AF" />;
     return null;
   }
   if (status === 'complete') return <Ionicons name={'checkmark-circle' as any} size={22} color="#16A34A" />;

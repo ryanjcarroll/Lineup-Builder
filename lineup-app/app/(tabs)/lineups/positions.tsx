@@ -24,7 +24,7 @@ const TEAM_ID       = '00000000-0000-0000-0000-000000000001';
 const INNINGS_COUNT = 6;
 const BUTTON_W  = 70;
 const BUTTON_H  = 48;
-const CONTAINER_H = 340;
+const CONTAINER_H = 270;
 const HORIZONTAL_MARGIN = 32;
 const NAME_COL_W = 88;
 const WARN_COL_W = 22;
@@ -51,19 +51,21 @@ function emptyInning(): InningMap {
 
 // ─── Diamond SVG ─────────────────────────────────────────────────────────────
 
-function DiamondSvg({ width }: { width: number }) {
+function DiamondSvg({ width, height }: { width: number; height: number }) {
+  const s  = height / 340;  // scale relative to original 340px design
   const cx = width / 2;
-  const d  = 75;
-  const homeX = cx,     homeY = 294;
+  const d  = 75 * s;
+  const homeX = cx,      homeY = 294 * s;
   const firstX = cx + d, firstY = homeY - d;
   const secondX = cx,    secondY = homeY - 2 * d;
   const thirdX = cx - d, thirdY = homeY - d;
   const bs = 10, bh = bs / 2;
   const rubberY = homeY - d * 1.2;
   const foulEdgeY = homeY - cx;
+  const arcY = 130 * s;
 
   return (
-    <Svg width={width} height={CONTAINER_H} style={{ position: 'absolute', top: 0, left: 0 }}>
+    <Svg width={width} height={height} style={{ position: 'absolute', top: 0, left: 0 }}>
       <SvgPolygon points={`${homeX},${homeY} ${firstX},${firstY} ${secondX},${secondY} ${thirdX},${thirdY}`} fill="#7B5230" opacity={0.82} />
       <Line x1={homeX} y1={homeY} x2={width} y2={foulEdgeY} stroke="rgba(255,255,255,0.25)" strokeWidth={1.5} />
       <Line x1={homeX} y1={homeY} x2={0}     y2={foulEdgeY} stroke="rgba(255,255,255,0.25)" strokeWidth={1.5} />
@@ -71,7 +73,7 @@ function DiamondSvg({ width }: { width: number }) {
       <Line x1={firstX}  y1={firstY}  x2={secondX} y2={secondY} stroke="rgba(255,255,255,0.55)" strokeWidth={1.5} />
       <Line x1={secondX} y1={secondY} x2={thirdX}  y2={thirdY}  stroke="rgba(255,255,255,0.55)" strokeWidth={1.5} />
       <Line x1={thirdX}  y1={thirdY}  x2={homeX}   y2={homeY}   stroke="rgba(255,255,255,0.55)" strokeWidth={1.5} />
-      <Path d={`M 5,130 Q ${cx},2 ${width - 5},130`} stroke="rgba(255,255,255,0.4)" strokeWidth={1.5} fill="none" />
+      <Path d={`M 5,${arcY} Q ${cx},2 ${width - 5},${arcY}`} stroke="rgba(255,255,255,0.4)" strokeWidth={1.5} fill="none" />
       <SvgRect x={cx - 5} y={rubberY - 2} width={10} height={4} fill="rgba(255,255,255,0.75)" rx={1} />
       <SvgRect x={firstX - bh}  y={firstY - bh}  width={bs} height={bs} fill="white" transform={`rotate(45,${firstX},${firstY})`} />
       <SvgRect x={secondX - bh} y={secondY - bh} width={bs} height={bs} fill="white" transform={`rotate(45,${secondX},${secondY})`} />
@@ -454,7 +456,7 @@ export default function PositionsScreen() {
 
       {/* ── Fixed top: tabs + diamond + hint ─────────────────────────────── */}
       <View>
-        <View style={{ flexDirection: 'row', marginHorizontal: 16, marginTop: 16, gap: 6 }}>
+        <View style={{ flexDirection: 'row', marginHorizontal: 16, marginTop: 10, gap: 6 }}>
           {inningNums.map(n => {
             const isCurrent = n === currentInning;
             const status = getInningStatus(n);
@@ -486,10 +488,10 @@ export default function PositionsScreen() {
 
         <Pressable
           onPress={() => { setSelectedPos(null); setBenchSelectedPlayer(null); }}
-          className="bg-green-700 mx-4 mt-3 rounded-2xl overflow-hidden"
-          style={{ height: CONTAINER_H }}
+          className="bg-green-700 mx-4 rounded-2xl overflow-hidden"
+          style={{ height: CONTAINER_H, marginTop: 10 }}
         >
-          <DiamondSvg width={containerW} />
+          <DiamondSvg width={containerW} height={CONTAINER_H} />
           {rosterLoaded && activeFieldPositions.map(({ key, cx, cy }) => {
             const player       = assignments[key];
             const isSelected   = selectedPos === key;

@@ -32,7 +32,7 @@ function Stepper({
         disabled={atMin}
         style={{
           width: 34, height: 34, borderRadius: 17,
-          backgroundColor: atMin ? '#F3F4F6' : '#EFF6FF',
+          backgroundColor: atMin ? '#E5E7EB' : '#DBEAFE',
           alignItems: 'center', justifyContent: 'center',
         }}
       >
@@ -46,7 +46,7 @@ function Stepper({
         disabled={atMax}
         style={{
           width: 34, height: 34, borderRadius: 17,
-          backgroundColor: atMax ? '#F3F4F6' : '#EFF6FF',
+          backgroundColor: atMax ? '#E5E7EB' : '#DBEAFE',
           alignItems: 'center', justifyContent: 'center',
         }}
       >
@@ -81,7 +81,7 @@ function RuleRow({
     <View style={{
       flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
       paddingHorizontal: 20, paddingVertical: 14,
-      borderBottomWidth: 1, borderBottomColor: '#F3F4F6',
+      borderBottomWidth: 1, borderBottomColor: '#E5E7EB',
     }}>
       <View style={{ flex: 1, marginRight: 16 }}>
         <Text style={{ fontSize: 15, fontWeight: '600', color: '#111827' }}>{label}</Text>
@@ -143,7 +143,7 @@ export default function EditRulesModal({ visible, onClose }: Props) {
     <Modal visible={visible} animationType="slide" transparent>
       <View style={{ flex: 1, justifyContent: 'flex-end' }}>
         <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={onClose} />
-        <View style={{ backgroundColor: 'white', borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '80%' }}>
+        <View style={{ backgroundColor: '#F3F4F6', borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '80%' }}>
           {/* Drag handle */}
           <View style={{ width: 40, height: 4, backgroundColor: '#E5E7EB', borderRadius: 2, alignSelf: 'center', marginTop: 12 }} />
 
@@ -161,7 +161,7 @@ export default function EditRulesModal({ visible, onClose }: Props) {
             {/* Players in field — Max / Min */}
             <View style={{
               paddingHorizontal: 20, paddingVertical: 14,
-              borderBottomWidth: 1, borderBottomColor: '#F3F4F6',
+              borderBottomWidth: 1, borderBottomColor: '#E5E7EB',
             }}>
               <Text style={{ fontSize: 15, fontWeight: '600', color: '#111827', marginBottom: 14 }}>
                 Players in field
@@ -171,7 +171,7 @@ export default function EditRulesModal({ visible, onClose }: Props) {
                   <Text style={{ fontSize: 12, fontWeight: '500', color: '#6B7280' }}>Min</Text>
                   <Stepper value={minPlayersField} min={1} max={20} onChange={setMinPlayersField} />
                 </View>
-                <View style={{ width: 1, backgroundColor: '#F3F4F6' }} />
+                <View style={{ width: 1, backgroundColor: '#E5E7EB' }} />
                 <View style={{ flex: 1, alignItems: 'center', gap: 6 }}>
                   <Text style={{ fontSize: 12, fontWeight: '500', color: '#6B7280' }}>Max</Text>
                   <Stepper value={maxPlayersField} min={1} max={20} onChange={setMaxPlayersField} />

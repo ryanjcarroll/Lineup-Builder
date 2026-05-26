@@ -21,7 +21,7 @@ function TeamSwitcherSheet({ visible, onClose }: { visible: boolean; onClose: ()
     <Modal visible={visible} transparent animationType="slide">
       <View style={{ flex: 1, justifyContent: 'flex-end' }}>
         <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={onClose} />
-        <View style={{ backgroundColor: 'white', borderTopLeftRadius: 20, borderTopRightRadius: 20 }}>
+        <View style={{ backgroundColor: '#F3F4F6', borderTopLeftRadius: 20, borderTopRightRadius: 20 }}>
           <View style={{ width: 40, height: 4, backgroundColor: '#E5E7EB', borderRadius: 2, alignSelf: 'center', marginTop: 12, marginBottom: 8 }} />
           <View style={{ paddingHorizontal: 20, paddingBottom: 36 }}>
             <Text style={{ fontSize: 17, fontWeight: '700', color: '#111827', marginBottom: 16 }}>Your Teams</Text>
@@ -29,7 +29,7 @@ function TeamSwitcherSheet({ visible, onClose }: { visible: boolean; onClose: ()
               <View style={{
                 flexDirection: 'row', alignItems: 'center',
                 paddingVertical: 14, paddingHorizontal: 16,
-                backgroundColor: '#EFF6FF', borderRadius: 14, marginBottom: 8,
+                backgroundColor: '#DBEAFE', borderRadius: 14, marginBottom: 8,
               }}>
                 <View style={{
                   width: 36, height: 36, borderRadius: 18,
@@ -45,9 +45,9 @@ function TeamSwitcherSheet({ visible, onClose }: { visible: boolean; onClose: ()
             )}
             <TouchableOpacity
               onPress={onClose}
-              style={{ marginTop: 12, paddingVertical: 14, alignItems: 'center', backgroundColor: '#F9FAFB', borderRadius: 12 }}
+              style={{ marginTop: 12, paddingVertical: 14, alignItems: 'center', backgroundColor: '#2563EB', borderRadius: 12 }}
             >
-              <Text style={{ fontSize: 15, fontWeight: '600', color: '#374151' }}>Done</Text>
+              <Text style={{ fontSize: 15, fontWeight: '700', color: 'white' }}>Done</Text>
             </TouchableOpacity>
           </View>
         </View>
