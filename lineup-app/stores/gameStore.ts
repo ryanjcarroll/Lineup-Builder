@@ -9,7 +9,7 @@ interface GameStore {
   loading: boolean;
 
   fetchGames: (teamId: string) => Promise<void>;
-  addGame: (teamId: string, date: string) => Promise<void>;
+  addGame: (teamId: string, date: string, opts?: { opponent?: string; startTime?: string }) => Promise<void>;
   removeGame: (gameId: string) => Promise<void>;
   selectGame: (game: Game | null) => Promise<void>;
   setRosterLocked: (gameId: string, locked: boolean) => Promise<void>;
@@ -36,10 +36,15 @@ export const useGameStore = create<GameStore>((set, get) => ({
     }
   },
 
-  addGame: async (teamId: string, date: string) => {
-    const { data, error } = await supabase
-      .from('games')
-      .insert({ team_id: teamId, date, innings_count: 6 })
+  addGame: async (teamId: string, date: string, opts: { opponent?: string; startTime?: string } = {}) => {
+    const { data, error } = await (supabase.from('games') as any)
+      .insert({
+        team_id: teamId,
+        date,
+        innings_count: 6,
+        opponent: opts.opponent ?? null,
+        start_time: opts.startTime ?? null,
+      })
       .select()
       .single();
     if (error || !data) return;

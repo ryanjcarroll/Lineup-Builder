@@ -250,7 +250,7 @@ export default function LineupsScreen() {
           return (
             <TouchableOpacity
               onPress={() => enabled && router.push('/lineups/batting')}
-              activeOpacity={enabled ? 0.7 : 1}
+              activeOpacity={enabled ? 0.7 : 0.45}
               style={{
                 backgroundColor: 'white', borderRadius: 16, padding: 20,
                 borderWidth: 1, borderColor: '#F3F4F6',
@@ -280,7 +280,7 @@ export default function LineupsScreen() {
           return (
             <TouchableOpacity
               onPress={() => enabled && router.push('/lineups/positions')}
-              activeOpacity={enabled ? 0.7 : 1}
+              activeOpacity={enabled ? 0.7 : 0.45}
               style={{
                 backgroundColor: 'white', borderRadius: 16, padding: 20,
                 borderWidth: 1, borderColor: '#F3F4F6',

@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
-  Alert, ActivityIndicator,
+  Alert, ActivityIndicator, Modal, TextInput,
+  KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { Stack, useNavigation } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -59,6 +60,81 @@ function buildWarnings(result: ValidationResult, slots: Player[], minBatters: nu
   return warnings;
 }
 
+// ─── Add Ghost Batter form ────────────────────────────────────────────────────
+
+function AddGhostForm({ onSubmit }: { onSubmit: (name: string, gender: 'M' | 'F') => Promise<void> }) {
+  const [name, setName] = useState('');
+  const [gender, setGender] = useState<'M' | 'F'>('F');
+  const [saving, setSaving] = useState(false);
+
+  async function handleSubmit() {
+    if (!name.trim()) return;
+    setSaving(true);
+    try {
+      await onSubmit(name.trim(), gender);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <>
+      <Text style={{ fontSize: 13, fontWeight: '600', color: '#374151', marginBottom: 6 }}>Name</Text>
+      <TextInput
+        value={name}
+        onChangeText={setName}
+        placeholder="Ghost batter name"
+        placeholderTextColor="#9CA3AF"
+        autoFocus
+        returnKeyType="done"
+        onSubmitEditing={handleSubmit}
+        style={{
+          backgroundColor: 'white', borderWidth: 1, borderColor: '#E5E7EB',
+          borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12,
+          fontSize: 16, color: '#111827', marginBottom: 20,
+        }}
+      />
+
+      <Text style={{ fontSize: 13, fontWeight: '600', color: '#374151', marginBottom: 8 }}>Gender</Text>
+      <View style={{ flexDirection: 'row', gap: 10, marginBottom: 24 }}>
+        {(['M', 'F'] as const).map((g) => (
+          <TouchableOpacity
+            key={g}
+            onPress={() => setGender(g)}
+            style={{
+              flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center',
+              backgroundColor: gender === g ? (g === 'M' ? '#DBEAFE' : '#FCE7F3') : 'white',
+              borderWidth: 1.5,
+              borderColor: gender === g ? (g === 'M' ? '#3B82F6' : '#EC4899') : '#E5E7EB',
+            }}
+          >
+            <Text style={{
+              fontWeight: '700', fontSize: 15,
+              color: gender === g ? (g === 'M' ? '#1D4ED8' : '#BE185D') : '#9CA3AF',
+            }}>
+              {g === 'M' ? 'Man' : 'Woman'}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      <TouchableOpacity
+        onPress={handleSubmit}
+        disabled={saving || !name.trim()}
+        style={{
+          backgroundColor: '#2563EB', borderRadius: 12,
+          paddingVertical: 14, alignItems: 'center',
+          opacity: !name.trim() ? 0.4 : 1,
+        }}
+      >
+        {saving
+          ? <ActivityIndicator color="white" />
+          : <Text style={{ color: 'white', fontWeight: '700', fontSize: 16 }}>Add Ghost Batter</Text>}
+      </TouchableOpacity>
+    </>
+  );
+}
+
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function BattingOrderScreen() {
@@ -74,6 +150,7 @@ export default function BattingOrderScreen() {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [addGhostOpen, setAddGhostOpen] = useState(false);
 
   const savedSlotJson = useRef<string>('[]');
   const hasUnsavedChanges = useRef(false);
@@ -108,7 +185,6 @@ export default function BattingOrderScreen() {
     if (!selectedGame) return;
     setLoading(true);
     try {
-      // Load which players are on this game's roster
       const { data: rosterRows } = await supabase
         .from('game_roster')
         .select('player_id, is_guest')
@@ -134,7 +210,6 @@ export default function BattingOrderScreen() {
         ...subPlayers,
       ];
 
-      // If a saved batting order exists, sort roster by it
       if (activeLineupId) {
         const { data: orders } = await supabase
           .from('batting_order')
@@ -144,9 +219,19 @@ export default function BattingOrderScreen() {
 
         if (orders && orders.length > 0) {
           const playerMap = new Map(rosterPlayers.map((p) => [p.id, p]));
+
+          // Fetch ghost batters referenced in the saved order but not in the game roster
+          const ghostIds = orders.map((o) => o.player_id).filter((id) => !playerMap.has(id));
+          if (ghostIds.length > 0) {
+            const { data: ghostData } = await (supabase.from('players') as any)
+              .select('*')
+              .in('id', ghostIds)
+              .eq('is_ghost', true);
+            (ghostData as Player[])?.forEach((g) => playerMap.set(g.id, g));
+          }
+
           const ordered: Player[] = [];
           const seenIds = new Set<string>();
-
           orders.forEach(({ player_id }) => {
             const p = playerMap.get(player_id);
             if (p && !seenIds.has(player_id)) {
@@ -154,7 +239,6 @@ export default function BattingOrderScreen() {
               seenIds.add(player_id);
             }
           });
-          // Append roster players added since the order was last saved
           rosterPlayers.forEach((p) => {
             if (!seenIds.has(p.id)) ordered.push(p);
           });
@@ -165,7 +249,6 @@ export default function BattingOrderScreen() {
         }
       }
 
-      // No saved order — use roster order as default
       setSlots(rosterPlayers);
       savedSlotJson.current = JSON.stringify(rosterPlayers.map((p) => p.id));
     } finally {
@@ -186,6 +269,35 @@ export default function BattingOrderScreen() {
     [newSlots[selectedIndex], newSlots[index]] = [newSlots[index], newSlots[selectedIndex]];
     setSlots(newSlots);
     setSelectedIndex(null);
+  }
+
+  async function handleAddGhost(name: string, gender: 'M' | 'F') {
+    const { data: player } = await (supabase.from('players') as any)
+      .insert({ team_id: TEAM_ID, name, gender, is_active: false, is_ghost: true })
+      .select()
+      .single();
+    if (player) {
+      setSlots((prev) => [...prev, player as Player]);
+      setAddGhostOpen(false);
+    }
+  }
+
+  function handleRemoveGhost(playerId: string) {
+    Alert.alert(
+      'Remove Ghost Batter',
+      'Remove this ghost batter from the lineup?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove', style: 'destructive', onPress: () => {
+            const idx = slots.findIndex((p) => p.id === playerId);
+            if (idx === selectedIndex) setSelectedIndex(null);
+            setSlots((prev) => prev.filter((p) => p.id !== playerId));
+            (supabase.from('players') as any).delete().eq('id', playerId);
+          },
+        },
+      ]
+    );
   }
 
   async function doSave() {
@@ -274,10 +386,11 @@ export default function BattingOrderScreen() {
           </Text>
 
           {slots.map((player, index) => {
-            const isSelected = selectedIndex === index;
-            const isSwapTarget = selectedIndex !== null && !isSelected;
-            const isViolating = violatingIndices.has(index);
-            const isSub = subs.some((s) => s.id === player.id);
+            const isSelected    = selectedIndex === index;
+            const isSwapTarget  = selectedIndex !== null && !isSelected;
+            const isViolating   = violatingIndices.has(index);
+            const isSub         = subs.some((s) => s.id === player.id);
+            const isGhost       = !!player.is_ghost;
 
             return (
               <TouchableOpacity
@@ -286,22 +399,22 @@ export default function BattingOrderScreen() {
                 activeOpacity={0.7}
                 style={{
                   flexDirection: 'row', alignItems: 'center', overflow: 'hidden',
-                  backgroundColor: isSelected ? '#EFF6FF' : isViolating ? '#FEFCE8' : 'white',
+                  backgroundColor: isSelected ? '#EFF6FF' : isGhost ? '#F5F3FF' : isViolating ? '#FEFCE8' : 'white',
                   borderRadius: 12, marginBottom: 8, paddingHorizontal: 14, paddingVertical: 12,
                   borderWidth: 1.5,
-                  borderColor: isSelected ? '#3B82F6' : isSwapTarget ? '#93C5FD' : isViolating ? '#FDE68A' : '#F3F4F6',
+                  borderColor: isSelected ? '#3B82F6' : isSwapTarget ? '#93C5FD' : isGhost ? '#C4B5FD' : isViolating ? '#FDE68A' : '#F3F4F6',
                   ...(isSwapTarget ? { borderStyle: 'dashed' } : {}),
                 }}
               >
                 <GenderCorner gender={player.gender} />
                 <View style={{
                   width: 32, height: 32, borderRadius: 16,
-                  backgroundColor: isSelected ? '#2563EB' : isViolating ? '#FEF08A' : '#F3F4F6',
+                  backgroundColor: isSelected ? '#2563EB' : isGhost ? '#EDE9FE' : isViolating ? '#FEF08A' : '#F3F4F6',
                   alignItems: 'center', justifyContent: 'center', marginRight: 12,
                 }}>
                   <Text style={{
                     fontWeight: '700', fontSize: 14,
-                    color: isSelected ? 'white' : isViolating ? '#854D0E' : '#6B7280',
+                    color: isSelected ? 'white' : isGhost ? '#7C3AED' : isViolating ? '#854D0E' : '#6B7280',
                   }}>
                     {index + 1}
                   </Text>
@@ -310,7 +423,7 @@ export default function BattingOrderScreen() {
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
                   <Text style={{
                     fontWeight: '600', fontSize: 16,
-                    color: isSelected ? '#1D4ED8' : isViolating ? '#854D0E' : '#111827',
+                    color: isSelected ? '#1D4ED8' : isGhost ? '#6D28D9' : isViolating ? '#854D0E' : '#111827',
                   }} numberOfLines={1}>
                     {player.name}
                   </Text>
@@ -319,9 +432,22 @@ export default function BattingOrderScreen() {
                       <Text style={{ fontSize: 10, fontWeight: '700', color: '#7C3AED' }}>SUB</Text>
                     </View>
                   )}
+                  {isGhost && (
+                    <View style={{ backgroundColor: '#EDE9FE', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1 }}>
+                      <Text style={{ fontSize: 10, fontWeight: '700', color: '#7C3AED' }}>GHOST</Text>
+                    </View>
+                  )}
                 </View>
 
-                {isViolating && !isSelected && (
+                {isGhost && !isSelected && (
+                  <TouchableOpacity
+                    onPress={() => handleRemoveGhost(player.id)}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    <Ionicons name={'close-circle-outline' as any} size={20} color="#A78BFA" />
+                  </TouchableOpacity>
+                )}
+                {isViolating && !isSelected && !isGhost && (
                   <Ionicons name={'warning' as any} size={14} color="#CA8A04" />
                 )}
                 {isSelected && (
@@ -330,8 +456,50 @@ export default function BattingOrderScreen() {
               </TouchableOpacity>
             );
           })}
+
+          {/* Ghost Batter section */}
+          <View style={{ marginTop: 24, marginBottom: 8 }}>
+            <Text style={{
+              fontSize: 11, fontWeight: '700', color: '#9CA3AF',
+              textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 4,
+            }}>
+              Ghost Batter
+            </Text>
+            <Text style={{ fontSize: 12, color: '#9CA3AF', marginBottom: 12 }}>
+              For rotating/non-standard lineup spots
+            </Text>
+            <TouchableOpacity
+              onPress={() => setAddGhostOpen(true)}
+              style={{
+                flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+                paddingVertical: 12, borderRadius: 12, borderWidth: 1.5,
+                borderColor: '#E5E7EB', borderStyle: 'dashed', backgroundColor: 'white',
+              }}
+            >
+              <Ionicons name={'person-add-outline' as any} size={18} color="#6B7280" />
+              <Text style={{ fontSize: 14, fontWeight: '600', color: '#6B7280' }}>Add Ghost Batter</Text>
+            </TouchableOpacity>
+          </View>
         </ScrollView>
       )}
+
+      {/* Add Ghost Batter bottom sheet */}
+      <Modal visible={addGhostOpen} transparent animationType="slide">
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+          <View style={{ flex: 1, justifyContent: 'flex-end' }}>
+            <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setAddGhostOpen(false)} />
+            <View style={{ backgroundColor: 'white', borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '70%' }}>
+              <View style={{ width: 40, height: 4, backgroundColor: '#E5E7EB', borderRadius: 2, alignSelf: 'center', marginTop: 12, marginBottom: 4 }} />
+              <Text style={{ fontSize: 17, fontWeight: '700', color: '#111827', textAlign: 'center', paddingVertical: 12 }}>
+                Add Ghost Batter
+              </Text>
+              <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+                <AddGhostForm onSubmit={handleAddGhost} />
+              </ScrollView>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 }

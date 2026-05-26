@@ -26,6 +26,7 @@ export interface Player {
   name: string;
   gender: Gender;
   is_active: boolean;
+  is_ghost: boolean;
   created_at: string;
   position_preferences?: PositionPreference[];
 }
@@ -41,6 +42,7 @@ export interface Game {
   team_id: string;
   date: string;
   opponent: string | null;
+  start_time: string | null;
   location: string | null;
   innings_count: number;
   notes: string | null;

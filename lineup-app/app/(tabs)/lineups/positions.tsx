@@ -150,6 +150,7 @@ export default function PositionsScreen() {
   const containerW = screenWidth - HORIZONTAL_MARGIN;
 
   const [rosterPlayers, setRosterPlayers] = useState<Player[]>([]);
+  const [rosterLoaded, setRosterLoaded] = useState(false);
   const [currentInning, setCurrentInning] = useState(1);
   const [inningAssignments, setInningAssignments] = useState<Record<number, InningMap>>({ 1: emptyInning() });
   const [selectedPos, setSelectedPos] = useState<PositionKey | null>(null);
@@ -183,6 +184,7 @@ export default function PositionsScreen() {
 
   async function loadRoster() {
     if (!selectedGame) return;
+    setRosterLoaded(false);
     const { data: rosterRows } = await (supabase.from('game_roster') as any)
       .select('player_id, is_guest')
       .eq('game_id', selectedGame.id);
@@ -205,6 +207,7 @@ export default function PositionsScreen() {
       ...players.filter((p) => attendingIds.has(p.id)),
       ...subPlayers,
     ]);
+    setRosterLoaded(true);
   }
 
   // Load existing lineup slots when lineup or roster changes
@@ -460,7 +463,7 @@ export default function PositionsScreen() {
           style={{ height: CONTAINER_H }}
         >
           <DiamondSvg width={containerW} />
-          {activeFieldPositions.map(({ key, cx, cy }) => {
+          {rosterLoaded && activeFieldPositions.map(({ key, cx, cy }) => {
             const player       = assignments[key];
             const isSelected   = selectedPos === key;
             const isTarget     = !isSelected && activePlayer !== null;

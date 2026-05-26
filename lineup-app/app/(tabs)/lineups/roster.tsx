@@ -7,6 +7,7 @@ import { Stack, useNavigation } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import AddPlayerForm, { PosPrefs } from '../../../components/AddPlayerForm';
+import GenderCorner from '../../../components/GenderCorner';
 import { useTeamStore } from '../../../stores/teamStore';
 import { useGameStore } from '../../../stores/gameStore';
 import { supabase } from '../../../lib/supabase';
@@ -197,7 +198,6 @@ export default function GameRosterScreen() {
     );
   }
 
-  const attendingCount = attending.size + subs.length;
   const isLocked = selectedGame?.roster_locked ?? false;
 
   const maxField = team?.rules?.players_in_field ?? DEFAULT_RULES.players_in_field;
@@ -312,9 +312,10 @@ export default function GameRosterScreen() {
                     backgroundColor: 'white',
                     marginHorizontal: 16, marginBottom: 6,
                     borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10,
-                    borderWidth: 1, borderColor: '#F3F4F6',
+                    borderWidth: 1, borderColor: '#F3F4F6', overflow: 'hidden',
                   }}
                 >
+                  <GenderCorner gender={player.gender} />
                   <View style={{
                     width: 34, height: 34, borderRadius: 17,
                     backgroundColor: getAvatarColor(player.name),
@@ -356,8 +357,9 @@ export default function GameRosterScreen() {
                     backgroundColor: 'white',
                     marginHorizontal: 16, marginBottom: 6,
                     borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10,
-                    borderWidth: 1, borderColor: '#F3F4F6',
+                    borderWidth: 1, borderColor: '#F3F4F6', overflow: 'hidden',
                   }}>
+                    <GenderCorner gender={sub.gender} />
                     <View style={{
                       width: 34, height: 34, borderRadius: 17,
                       backgroundColor: getAvatarColor(sub.name),

@@ -204,11 +204,11 @@ function EditRosterModal({ visible, onClose }: { visible: boolean; onClose: () =
           flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
           paddingHorizontal: 16, paddingVertical: 14, backgroundColor: '#1E40AF',
         }}>
-          <View style={{ width: 24 }} />
-          <Text style={{ fontSize: 18, fontWeight: '700', color: 'white' }}>Roster</Text>
           <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Text style={{ color: 'white', fontSize: 16, fontWeight: '600' }}>Done</Text>
+            <Ionicons name={'chevron-back' as any} size={26} color="white" />
           </TouchableOpacity>
+          <Text style={{ fontSize: 18, fontWeight: '700', color: 'white' }}>Roster</Text>
+          <View style={{ width: 26 }} />
         </View>
 
         <>
