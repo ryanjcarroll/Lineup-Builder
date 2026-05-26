@@ -17,6 +17,7 @@ export interface Team {
   name: string;
   sport: Sport;
   rules: TeamRules;
+  photo_url: string | null;
   created_at: string;
 }
 
@@ -82,7 +83,7 @@ export interface BattingOrder {
 export interface Database {
   public: {
     Tables: {
-      teams: { Row: Team; Insert: Omit<Team, 'id' | 'created_at'>; Update: Partial<Team> };
+      teams: { Row: Team; Insert: Omit<Team, 'id' | 'created_at' | 'photo_url'>; Update: Partial<Team> };
       players: { Row: Player; Insert: Omit<Player, 'id' | 'created_at' | 'position_preferences'>; Update: Partial<Player> };
       position_preferences: { Row: PositionPreference; Insert: PositionPreference; Update: Partial<PositionPreference> };
       games: { Row: Game; Insert: Omit<Game, 'id' | 'created_at'>; Update: Partial<Game> };

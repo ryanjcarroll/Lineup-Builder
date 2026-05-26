@@ -312,6 +312,21 @@ export default function PositionsScreen() {
     return warnings;
   }
 
+  function getInningStatus(inning: number): 'complete' | 'warn' | 'invalid' | 'default' {
+    const inn = inningAssignments[inning];
+    if (!inn) return 'default';
+    const placedEntries = Object.entries(inn).filter(([pos, p]) => p !== null && activePositionKeys.includes(pos));
+    if (placedEntries.length === 0) return 'default';
+    const placed = placedEntries.map(([, p]) => p!) as Player[];
+    if (placed.filter(p => p.gender === 'M').length > maxMenField) return 'invalid';
+    const hasAvoid = placedEntries.some(([pos, p]) =>
+      p!.position_preferences?.find(pp => pp.position === pos)?.preference === 'avoid'
+    );
+    if (hasAvoid) return 'warn';
+    if (placed.length === activeFieldPositions.length) return 'complete';
+    return 'default';
+  }
+
   function handlePositionPress(posKey: PositionKey) {
     if (benchSelectedPlayer !== null) {
       updateAssignments(prev => ({ ...prev, [posKey]: benchSelectedPlayer }));
@@ -439,19 +454,31 @@ export default function PositionsScreen() {
 
       {/* ── Fixed top: tabs + diamond + hint ─────────────────────────────── */}
       <View>
-        <View className="flex-row mx-4 mt-4 gap-1.5">
+        <View style={{ flexDirection: 'row', marginHorizontal: 16, marginTop: 16, gap: 6 }}>
           {inningNums.map(n => {
             const isCurrent = n === currentInning;
-            const hasData   = inningAssignments[n] && Object.values(inningAssignments[n]).some(Boolean);
+            const status = getInningStatus(n);
+            const borderColor = isCurrent ? '#2563EB'
+              : status === 'complete' ? '#16A34A'
+              : status === 'warn'     ? '#CA8A04'
+              : status === 'invalid'  ? '#DC2626'
+              : '#E5E7EB';
+            const textColor = isCurrent ? 'white'
+              : status === 'complete' ? '#16A34A'
+              : status === 'warn'     ? '#CA8A04'
+              : status === 'invalid'  ? '#DC2626'
+              : '#9CA3AF';
             return (
               <TouchableOpacity
                 key={n}
                 onPress={() => switchInning(n)}
-                className={`flex-1 py-2 rounded-lg items-center ${isCurrent ? 'bg-brand' : 'bg-white border border-gray-200'}`}
+                style={{
+                  flex: 1, paddingVertical: 8, borderRadius: 8, alignItems: 'center',
+                  backgroundColor: isCurrent ? '#2563EB' : 'white',
+                  borderWidth: 1.5, borderColor,
+                }}
               >
-                <Text className={`text-sm font-bold ${isCurrent ? 'text-white' : hasData ? 'text-gray-700' : 'text-gray-300'}`}>
-                  {n}
-                </Text>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: textColor }}>{n}</Text>
               </TouchableOpacity>
             );
           })}

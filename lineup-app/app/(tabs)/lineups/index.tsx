@@ -320,6 +320,7 @@ function StatusIcon({ status, roster }: { status: SlotStatus | undefined; roster
   if (status === 'complete') return <Ionicons name={'checkmark-circle' as any} size={22} color="#16A34A" />;
   if (status === 'warning')  return <Ionicons name={'warning' as any}           size={20} color="#CA8A04" />;
   if (status === 'partial')  return <Ionicons name={'create' as any}            size={20} color="#2563EB" />;
+  if (status === 'empty')    return <Ionicons name={'alert-circle' as any}      size={22} color="#DC2626" />;
   return null;
 }
 

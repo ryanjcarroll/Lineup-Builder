@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, ActivityIndicator,
-  Modal, TextInput, KeyboardAvoidingView, Platform, Alert,
+  Modal, TextInput, KeyboardAvoidingView, Platform, Alert, Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import PlayerCard from '../../components/PlayerCard';
 import EditRulesModal from '../../components/EditRulesModal';
 import EditStrategiesModal from '../../components/EditStrategiesModal';
@@ -70,17 +71,59 @@ function EditTeamModal({ visible, onClose, onSaved }: {
 }) {
   const { team } = useTeamStore();
   const [name, setName] = useState(team?.name ?? '');
+  const [photoUrl, setPhotoUrl] = useState<string | null>(team?.photo_url ?? null);
+  const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (visible) setName(team?.name ?? '');
+    if (visible) {
+      setName(team?.name ?? '');
+      setPhotoUrl(team?.photo_url ?? null);
+    }
   }, [visible]);
+
+  async function handlePickPhoto() {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission needed', 'Please allow access to your photo library in Settings.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+      base64: true,
+    });
+    if (result.canceled) return;
+
+    const asset = result.assets[0];
+    if (!asset.base64) return;
+    setUploading(true);
+    try {
+      const { base64, uri } = asset;
+      const mime = uri.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
+      const dataUrl = `data:${mime};base64,${base64}`;
+      const { error } = await (supabase.from('teams') as any)
+        .update({ photo_url: dataUrl })
+        .eq('id', TEAM_ID);
+      if (error) throw error;
+      setPhotoUrl(dataUrl);
+    } catch (e) {
+      const msg = (e as any)?.message ?? String(e);
+      Alert.alert('Upload failed', msg);
+    } finally {
+      setUploading(false);
+    }
+  }
 
   async function handleSave() {
     if (!name.trim()) return;
     setSaving(true);
     try {
-      await (supabase.from('teams') as any).update({ name: name.trim() }).eq('id', TEAM_ID);
+      await (supabase.from('teams') as any)
+        .update({ name: name.trim() })
+        .eq('id', TEAM_ID);
       onSaved();
       onClose();
     } finally {
@@ -103,16 +146,35 @@ function EditTeamModal({ visible, onClose, onSaved }: {
               </Text>
 
               <View style={{ alignItems: 'center', marginBottom: 24 }}>
-                <View style={{
-                  width: 80, height: 80, borderRadius: 40,
-                  backgroundColor: previewColor,
-                  alignItems: 'center', justifyContent: 'center',
-                }}>
-                  <Text style={{ fontSize: 28, fontWeight: '700', color: 'white' }}>
-                    {getInitials(name.trim() || team?.name || '?')}
-                  </Text>
-                </View>
-                <Text style={{ fontSize: 12, color: '#9CA3AF', marginTop: 8 }}>Photo upload coming soon</Text>
+                <TouchableOpacity onPress={handlePickPhoto} disabled={uploading} style={{ position: 'relative' }}>
+                  {photoUrl ? (
+                    <Image
+                      source={{ uri: photoUrl }}
+                      style={{ width: 80, height: 80, borderRadius: 40 }}
+                    />
+                  ) : (
+                    <View style={{
+                      width: 80, height: 80, borderRadius: 40,
+                      backgroundColor: previewColor,
+                      alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      <Text style={{ fontSize: 28, fontWeight: '700', color: 'white' }}>
+                        {getInitials(name.trim() || team?.name || '?')}
+                      </Text>
+                    </View>
+                  )}
+                  <View style={{
+                    position: 'absolute', bottom: 0, right: 0,
+                    width: 26, height: 26, borderRadius: 13,
+                    backgroundColor: '#2563EB', borderWidth: 2, borderColor: 'white',
+                    alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    {uploading
+                      ? <ActivityIndicator size="small" color="white" />
+                      : <Ionicons name={'camera' as any} size={13} color="white" />}
+                  </View>
+                </TouchableOpacity>
+                <Text style={{ fontSize: 12, color: '#6B7280', marginTop: 8 }}>Tap to change photo</Text>
               </View>
 
               <Text style={{ fontSize: 13, fontWeight: '600', color: '#374151', marginBottom: 6 }}>Team Name</Text>
@@ -132,11 +194,11 @@ function EditTeamModal({ visible, onClose, onSaved }: {
 
               <TouchableOpacity
                 onPress={handleSave}
-                disabled={saving || !name.trim()}
+                disabled={saving || uploading || !name.trim()}
                 style={{
                   backgroundColor: '#2563EB', borderRadius: 12,
                   paddingVertical: 14, alignItems: 'center',
-                  opacity: !name.trim() ? 0.4 : 1,
+                  opacity: !name.trim() || uploading ? 0.4 : 1,
                 }}
               >
                 {saving
@@ -319,15 +381,22 @@ export default function RosterScreen() {
           <ActivityIndicator size="large" color="#2563EB" style={{ marginVertical: 24 }} />
         ) : (
           <>
-            <View style={{
-              width: 88, height: 88, borderRadius: 44,
-              backgroundColor: avatarColor,
-              alignItems: 'center', justifyContent: 'center', marginBottom: 12,
-            }}>
-              <Text style={{ fontSize: 32, fontWeight: '700', color: 'white' }}>
-                {getInitials(team?.name ?? '')}
-              </Text>
-            </View>
+            {team.photo_url ? (
+              <Image
+                source={{ uri: team.photo_url }}
+                style={{ width: 88, height: 88, borderRadius: 44, marginBottom: 12 }}
+              />
+            ) : (
+              <View style={{
+                width: 88, height: 88, borderRadius: 44,
+                backgroundColor: avatarColor,
+                alignItems: 'center', justifyContent: 'center', marginBottom: 12,
+              }}>
+                <Text style={{ fontSize: 32, fontWeight: '700', color: 'white' }}>
+                  {getInitials(team.name)}
+                </Text>
+              </View>
+            )}
             <Text style={{ fontSize: 22, fontWeight: '800', color: '#111827', marginBottom: 4 }}>
               {team?.name}
             </Text>
