@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, Alert, ActivityIndicator, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Calendar, DateData } from 'react-native-calendars';
 import { useGameStore } from '../../stores/gameStore';
@@ -74,7 +74,7 @@ export default function ScheduleScreen() {
               style={{ borderBottomWidth: 1, borderBottomColor: '#E5E7EB' }}
             />
 
-            <View style={{ paddingHorizontal: 16, paddingTop: 20 }}>
+            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 20, paddingBottom: 32 }} showsVerticalScrollIndicator={false}>
               <Text style={{ fontSize: 15, fontWeight: '700', color: '#111827', marginBottom: 12 }}>
                 {games.length === 0 ? 'No games scheduled' : `${games.length} Game${games.length !== 1 ? 's' : ''} Scheduled`}
               </Text>
@@ -127,7 +127,7 @@ export default function ScheduleScreen() {
               <Text style={{ fontSize: 12, color: '#9CA3AF', textAlign: 'center', marginTop: 8 }}>
                 Tap a date on the calendar to add or remove a game
               </Text>
-            </View>
+            </ScrollView>
           </>
         )}
       </View>

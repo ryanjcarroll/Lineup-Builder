@@ -48,7 +48,7 @@ export default function PlayerCard({ player }: Props) {
     // Outer View carries shadow; inner View clips triangle to border radius
     <View className="bg-white rounded-xl mx-4 mb-3 border border-gray-100 shadow-sm">
       <View style={{ borderRadius: 12, overflow: 'hidden' }}>
-        <GenderCorner gender={player.gender} size={14} />
+        <GenderCorner gender={player.gender} size={21} />
         <View className="flex-row items-start px-4 pt-4 pb-3">
           <View style={{
             width: 44, height: 44, borderRadius: 22,

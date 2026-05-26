@@ -5,12 +5,11 @@ export type Gender = 'M' | 'F';
 
 export interface TeamRules {
   players_in_field: number;
-  min_female_in_field: number;
+  min_players_to_play: number;
+  max_male_in_field: number;
   max_consecutive_male_batting: number;
   field_positions: string[];
-  // Attendance / batting rules
-  min_players_to_play: number;
-  min_women_to_play: number;
+  strategies?: Record<number, string[]>;
 }
 
 export interface Team {
@@ -45,6 +44,7 @@ export interface Game {
   location: string | null;
   innings_count: number;
   notes: string | null;
+  roster_locked: boolean;
   created_at: string;
 }
 

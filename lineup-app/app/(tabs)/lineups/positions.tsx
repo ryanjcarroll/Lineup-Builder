@@ -14,6 +14,7 @@ import { Stack, useNavigation } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import GenderCorner from '../../../components/GenderCorner';
 import { DEFAULT_RULES } from '../../../components/EditRulesModal';
+import { DEFAULT_STRATEGIES } from '../../../components/EditStrategiesModal';
 import { useTeamStore } from '../../../stores/teamStore';
 import { useGameStore } from '../../../stores/gameStore';
 import { supabase } from '../../../lib/supabase';
@@ -30,6 +31,7 @@ const WARN_COL_W = 22;
 const FIELD_POSITIONS = [
   { key: 'LF', cx: 11, cy: 17 },
   { key: 'LC', cx: 35, cy: 12 },
+  { key: 'CF', cx: 50, cy: 12 },
   { key: 'RC', cx: 65, cy: 12 },
   { key: 'RF', cx: 89, cy: 17 },
   { key: 'SS', cx: 33, cy: 42 },
@@ -105,13 +107,23 @@ function posLabelColor(isSelected: boolean, hasPlayer: boolean, isTarget: boolea
   return hasPlayer ? '#6B7280' : 'rgba(255,255,255,0.75)';
 }
 
-// ─── Table cell colors ────────────────────────────────────────────────────────
+// ─── Table cell colors (by player's preference for the assigned position) ─────
 
-function cellColors(pos: string | null): { text: string; bg: string } {
-  if (!pos) return { text: '#9CA3AF', bg: 'transparent' };
-  if (pos === 'P' || pos === 'C')             return { text: '#B45309', bg: '#FEF3C7' };
-  if (['SS', '2B', '3B', '1B'].includes(pos)) return { text: '#1D4ED8', bg: '#DBEAFE' };
-  return { text: '#15803D', bg: '#DCFCE7' };
+function cellColors(pref: string | undefined | null): { text: string; bg: string } {
+  if (pref === 'preferred') return { text: '#15803D', bg: '#DCFCE7' };
+  if (pref === 'avoid')     return { text: '#DC2626', bg: '#FEE2E2' };
+  return { text: '#6B7280', bg: 'transparent' };
+}
+
+// ─── Display name: adds last initial when first name is shared on the roster ──
+
+function displayName(player: Player, roster: Player[]): string {
+  const first = player.name.split(' ')[0];
+  const hasDupe = roster.some((p) => p.id !== player.id && p.name.split(' ')[0] === first);
+  if (!hasDupe) return first;
+  const parts = player.name.trim().split(' ');
+  const lastInitial = parts.length > 1 ? ` ${parts[parts.length - 1][0].toUpperCase()}` : '';
+  return `${first}${lastInitial}`;
 }
 
 // ─── Serialize assignments for change detection (only non-null entries) ───────
@@ -131,12 +143,13 @@ function serializeAssignments(assignments: Record<number, InningMap>): string {
 
 export default function PositionsScreen() {
   const { team, players, fetchTeam } = useTeamStore();
-  const { activeLineupId } = useGameStore();
-  const minWomenField = team?.rules?.min_female_in_field ?? DEFAULT_RULES.min_female_in_field;
+  const { activeLineupId, selectedGame } = useGameStore();
+  const maxMenField = team?.rules?.max_male_in_field ?? DEFAULT_RULES.max_male_in_field;
   const navigation = useNavigation();
   const { width: screenWidth } = useWindowDimensions();
   const containerW = screenWidth - HORIZONTAL_MARGIN;
 
+  const [rosterPlayers, setRosterPlayers] = useState<Player[]>([]);
   const [currentInning, setCurrentInning] = useState(1);
   const [inningAssignments, setInningAssignments] = useState<Record<number, InningMap>>({ 1: emptyInning() });
   const [selectedPos, setSelectedPos] = useState<PositionKey | null>(null);
@@ -166,7 +179,35 @@ export default function PositionsScreen() {
 
   useEffect(() => { if (players.length === 0) fetchTeam(TEAM_ID); }, []);
 
-  // Load existing lineup slots when lineup changes
+  useEffect(() => { if (selectedGame) loadRoster(); }, [selectedGame, players]);
+
+  async function loadRoster() {
+    if (!selectedGame) return;
+    const { data: rosterRows } = await (supabase.from('game_roster') as any)
+      .select('player_id, is_guest')
+      .eq('game_id', selectedGame.id);
+
+    const attendingIds = new Set(
+      rosterRows?.filter((r: any) => !r.is_guest).map((r: any) => r.player_id) ?? []
+    );
+    const subIds = rosterRows?.filter((r: any) => r.is_guest).map((r: any) => r.player_id) ?? [];
+
+    let subPlayers: Player[] = [];
+    if (subIds.length > 0) {
+      const { data } = await supabase
+        .from('players')
+        .select('*, position_preferences(*)')
+        .in('id', subIds);
+      subPlayers = (data as Player[]) ?? [];
+    }
+
+    setRosterPlayers([
+      ...players.filter((p) => attendingIds.has(p.id)),
+      ...subPlayers,
+    ]);
+  }
+
+  // Load existing lineup slots when lineup or roster changes
   useEffect(() => {
     if (!activeLineupId) { setInningAssignments({ 1: emptyInning() }); return; }
     supabase
@@ -178,13 +219,13 @@ export default function PositionsScreen() {
         const built: Record<number, InningMap> = {};
         data.forEach(({ inning, position, player_id }) => {
           if (!built[inning]) built[inning] = emptyInning();
-          const player = players.find((p) => p.id === player_id);
+          const player = rosterPlayers.find((p) => p.id === player_id);
           if (player) built[inning][position] = player;
         });
         savedAssignmentsJson.current = serializeAssignments(built);
         setInningAssignments(built);
       });
-  }, [activeLineupId, players]);
+  }, [activeLineupId, rosterPlayers]);
 
   const assignments = inningAssignments[currentInning] ?? emptyInning();
 
@@ -220,9 +261,16 @@ export default function PositionsScreen() {
     return null;
   }
 
+  const maxField = team?.rules?.players_in_field ?? DEFAULT_RULES.players_in_field;
+  const womenInRoster = rosterPlayers.filter(p => p.gender === 'F').length;
+  const fieldersAllowed = Math.min(maxField, womenInRoster + maxMenField);
+  const teamStrategies = team?.rules?.strategies as Record<number, string[]> | undefined;
+  const activePositionKeys = teamStrategies?.[fieldersAllowed] ?? DEFAULT_STRATEGIES[fieldersAllowed] ?? FIELD_POSITIONS.map(p => p.key);
+  const activeFieldPositions = FIELD_POSITIONS.filter(p => activePositionKeys.includes(p.key));
+
   function isInningFull(inning: number): boolean {
     const inn = inningAssignments[inning];
-    return !!inn && Object.values(inn).filter(Boolean).length === FIELD_POSITIONS.length;
+    return !!inn && Object.values(inn).filter(Boolean).length === activeFieldPositions.length;
   }
 
   function getPlayerRowWarnings(player: Player): string[] {
@@ -255,8 +303,8 @@ export default function PositionsScreen() {
     if (!isInningFull(inning)) return [];
     const placed = Object.values(inningAssignments[inning]).filter(Boolean) as Player[];
     const warnings: string[] = [];
-    if (placed.filter(p => p.gender === 'F').length < minWomenField) {
-      warnings.push('Not enough women in field');
+    if (placed.filter(p => p.gender === 'M').length > maxMenField) {
+      warnings.push(`Too many men in field (max: ${maxMenField})`);
     }
     return warnings;
   }
@@ -349,8 +397,8 @@ export default function PositionsScreen() {
   inningNums.forEach(n => {
     getInningColWarnings(n).forEach(w => bannerWarnings.push(`Inning ${n}: ${w}`));
   });
-  players.forEach(p => {
-    getPlayerRowWarnings(p).forEach(w => bannerWarnings.push(`${p.name.split(' ')[0]}: ${w}`));
+  rosterPlayers.forEach(p => {
+    getPlayerRowWarnings(p).forEach(w => bannerWarnings.push(`${displayName(p, rosterPlayers)}: ${w}`));
   });
   const hintText = isBenchMode
     ? 'Tap a position to place · tap player again to cancel'
@@ -361,12 +409,15 @@ export default function PositionsScreen() {
     : 'Tap a player or position to begin · long-press to remove';
 
   const sortedPlayers = selectedPos
-    ? [...players].sort((a, b) => {
-        const getPref = (p: Player) => p.position_preferences?.find(pp => pp.position === selectedPos)?.preference;
-        const rank = (pref?: string) => pref === 'preferred' ? 0 : pref === 'avoid' ? 2 : 1;
-        return rank(getPref(a)) - rank(getPref(b));
+    ? [...rosterPlayers].sort((a, b) => {
+        const prefRank = (p: Player) => {
+          const pref = p.position_preferences?.find(pp => pp.position === selectedPos)?.preference;
+          return pref === 'preferred' ? 0 : pref === 'avoid' ? 2 : 1;
+        };
+        const hasPos = (p: Player) => getPlayerPosition(p.id, currentInning) !== null ? 1 : 0;
+        return (hasPos(a) * 3 + prefRank(a)) - (hasPos(b) * 3 + prefRank(b));
       })
-    : players;
+    : rosterPlayers;
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={[]}>
@@ -409,7 +460,7 @@ export default function PositionsScreen() {
           style={{ height: CONTAINER_H }}
         >
           <DiamondSvg width={containerW} />
-          {FIELD_POSITIONS.map(({ key, cx, cy }) => {
+          {activeFieldPositions.map(({ key, cx, cy }) => {
             const player       = assignments[key];
             const isSelected   = selectedPos === key;
             const isTarget     = !isSelected && activePlayer !== null;
@@ -437,15 +488,25 @@ export default function PositionsScreen() {
                   borderColor:     posBorderColor(isSelected, !!player, isTarget, aPref, isGrayed, gPref),
                 }}
               >
-                {player && <GenderCorner gender={player.gender} size={8} />}
+                {player && <GenderCorner gender={player.gender} size={12} />}
                 <Text style={{ fontSize: 10, fontWeight: '600', color: posLabelColor(isSelected, !!player, isTarget, aPref, isGrayed, gPref) }}>
                   {key}
                 </Text>
-                {player && (
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: isSelected ? '#1D4ED8' : isGrayed ? 'rgba(255,255,255,0.5)' : '#111827' }} numberOfLines={1}>
-                    {player.name.split(' ')[0]}
-                  </Text>
-                )}
+                {player && (() => {
+                  const placedPref = player.position_preferences?.find(pp => pp.position === key)?.preference;
+                  const nameHl = !isSelected && !isGrayed
+                    ? placedPref === 'preferred' ? { backgroundColor: 'rgba(34,197,94,0.35)', borderRadius: 4, paddingHorizontal: 3 }
+                    : placedPref === 'avoid'     ? { backgroundColor: 'rgba(239,68,68,0.28)', borderRadius: 4, paddingHorizontal: 3 }
+                    : undefined
+                    : undefined;
+                  return (
+                    <View style={nameHl}>
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: isSelected ? '#1D4ED8' : isGrayed ? 'rgba(255,255,255,0.5)' : '#111827' }} numberOfLines={1}>
+                        {displayName(player, rosterPlayers)}
+                      </Text>
+                    </View>
+                  );
+                })()}
               </TouchableOpacity>
             );
           })}
@@ -510,43 +571,37 @@ export default function PositionsScreen() {
                 className={`flex-row items-center ${!isLast ? 'border-b border-gray-50' : ''}`}
               >
                 <View style={{ width: NAME_COL_W, overflow: 'hidden' }} className="flex-row items-center gap-1 px-3 py-2.5">
-                  <GenderCorner gender={player.gender} size={8} />
+                  <GenderCorner gender={player.gender} size={12} />
                   <Text className="text-sm font-medium text-gray-900 flex-shrink" numberOfLines={1}>
-                    {player.name.split(' ')[0]}
+                    {displayName(player, rosterPlayers)}
                   </Text>
                 </View>
 
                 {/* Inning cells */}
                 {inningNums.map(n => {
-                  const pos          = getPlayerPosition(player.id, n);
-                  const hasData      = !!inningAssignments[n];
+                  const pos            = getPlayerPosition(player.id, n);
                   const isCellSelected = n === currentInning && player.id === selectedPlayerId;
-                  const { text, bg } = cellColors(pos);
+                  const positionPref   = pos ? player.position_preferences?.find((pp) => pp.position === pos)?.preference : null;
+                  const { text, bg }   = pos ? cellColors(positionPref) : { text: '#9CA3AF', bg: 'transparent' };
 
                   return (
                     <View key={n} style={{ flex: 1 }} className="items-center py-2.5">
-                      {hasData ? (
-                        <View style={{
-                          backgroundColor: isCellSelected ? '#3B82F6' : bg,
-                          borderRadius: 4,
-                          paddingHorizontal: 3,
-                          paddingVertical: 1,
-                          minWidth: 26,
-                          alignItems: 'center',
+                      <View style={{
+                        backgroundColor: isCellSelected ? '#3B82F6' : bg,
+                        borderRadius: 4,
+                        paddingHorizontal: 3,
+                        paddingVertical: 1,
+                        minWidth: 26,
+                        alignItems: 'center',
+                      }}>
+                        <Text style={{
+                          fontSize: 10,
+                          fontWeight: n === currentInning ? '700' : '500',
+                          color: isCellSelected ? 'white' : text,
                         }}>
-                          <Text style={{
-                            fontSize: 10,
-                            fontWeight: n === currentInning ? '700' : '500',
-                            color: isCellSelected ? 'white' : text,
-                          }}>
-                            {pos ?? '—'}
-                          </Text>
-                        </View>
-                      ) : isCellSelected ? (
-                        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#3B82F6' }} />
-                      ) : (
-                        <Text style={{ fontSize: 12, color: '#E5E7EB' }}>·</Text>
-                      )}
+                          {pos ?? '—'}
+                        </Text>
+                      </View>
                     </View>
                   );
                 })}

@@ -12,8 +12,7 @@ export const DEFAULT_RULES: TeamRules = {
   players_in_field: 10,
   field_positions: [],
   min_players_to_play: 6,
-  min_women_to_play: 1,
-  min_female_in_field: 3,
+  max_male_in_field: 7,
   max_consecutive_male_batting: 3,
 };
 
@@ -106,17 +105,17 @@ export default function EditRulesModal({ visible, onClose }: Props) {
   const { team, fetchTeam } = useTeamStore();
   const rules = team?.rules;
 
-  const [minTotal, setMinTotal] = useState(DEFAULT_RULES.min_players_to_play);
-  const [minWomen, setMinWomen] = useState(DEFAULT_RULES.min_women_to_play);
-  const [minWomenField, setMinWomenField] = useState(DEFAULT_RULES.min_female_in_field);
+  const [maxPlayersField, setMaxPlayersField] = useState(DEFAULT_RULES.players_in_field);
+  const [minPlayersField, setMinPlayersField] = useState(DEFAULT_RULES.min_players_to_play);
+  const [maxMenField, setMaxMenField] = useState(DEFAULT_RULES.max_male_in_field);
   const [maxConsecMen, setMaxConsecMen] = useState(DEFAULT_RULES.max_consecutive_male_batting);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (visible && rules) {
-      setMinTotal(rules.min_players_to_play ?? DEFAULT_RULES.min_players_to_play);
-      setMinWomen(rules.min_women_to_play ?? DEFAULT_RULES.min_women_to_play);
-      setMinWomenField(rules.min_female_in_field ?? DEFAULT_RULES.min_female_in_field);
+      setMaxPlayersField(rules.players_in_field ?? DEFAULT_RULES.players_in_field);
+      setMinPlayersField(rules.min_players_to_play ?? DEFAULT_RULES.min_players_to_play);
+      setMaxMenField(rules.max_male_in_field ?? DEFAULT_RULES.max_male_in_field);
       setMaxConsecMen(rules.max_consecutive_male_batting ?? DEFAULT_RULES.max_consecutive_male_batting);
     }
   }, [visible]);
@@ -127,9 +126,9 @@ export default function EditRulesModal({ visible, onClose }: Props) {
     try {
       const updatedRules: TeamRules = {
         ...(rules ?? DEFAULT_RULES),
-        min_players_to_play: minTotal,
-        min_women_to_play: minWomen,
-        min_female_in_field: minWomenField,
+        players_in_field: maxPlayersField,
+        min_players_to_play: minPlayersField,
+        max_male_in_field: maxMenField,
         max_consecutive_male_batting: maxConsecMen,
       };
       await supabase.from('teams').update({ rules: updatedRules }).eq('id', team.id);
@@ -159,32 +158,32 @@ export default function EditRulesModal({ visible, onClose }: Props) {
           <ScrollView showsVerticalScrollIndicator={false}>
             <SectionLabel title="League Rules" />
 
-            {/* Minimum players to play — two steppers */}
+            {/* Players in field — Max / Min */}
             <View style={{
               paddingHorizontal: 20, paddingVertical: 14,
               borderBottomWidth: 1, borderBottomColor: '#F3F4F6',
             }}>
               <Text style={{ fontSize: 15, fontWeight: '600', color: '#111827', marginBottom: 14 }}>
-                Minimum players to play
+                Players in field
               </Text>
               <View style={{ flexDirection: 'row', gap: 16 }}>
                 <View style={{ flex: 1, alignItems: 'center', gap: 6 }}>
-                  <Text style={{ fontSize: 12, fontWeight: '500', color: '#6B7280' }}>Total</Text>
-                  <Stepper value={minTotal} min={1} max={20} onChange={setMinTotal} />
+                  <Text style={{ fontSize: 12, fontWeight: '500', color: '#6B7280' }}>Min</Text>
+                  <Stepper value={minPlayersField} min={1} max={20} onChange={setMinPlayersField} />
                 </View>
                 <View style={{ width: 1, backgroundColor: '#F3F4F6' }} />
                 <View style={{ flex: 1, alignItems: 'center', gap: 6 }}>
-                  <Text style={{ fontSize: 12, fontWeight: '500', color: '#6B7280' }}>Women</Text>
-                  <Stepper value={minWomen} min={0} max={10} onChange={setMinWomen} />
+                  <Text style={{ fontSize: 12, fontWeight: '500', color: '#6B7280' }}>Max</Text>
+                  <Stepper value={maxPlayersField} min={1} max={20} onChange={setMaxPlayersField} />
                 </View>
               </View>
             </View>
 
-            <RuleRow label="Minimum women in field" description="Per inning on defense">
-              <Stepper value={minWomenField} min={0} max={10} onChange={setMinWomenField} />
+            <RuleRow label="Max men in field" description="Per inning on defense">
+              <Stepper value={maxMenField} min={0} max={20} onChange={setMaxMenField} />
             </RuleRow>
 
-            <RuleRow label="Maximum consecutive men" description="Batting order, including wraparound">
+            <RuleRow label="Max consecutive men" description="Batting order, including wraparound">
               <Stepper value={maxConsecMen} min={1} max={10} onChange={setMaxConsecMen} />
             </RuleRow>
 

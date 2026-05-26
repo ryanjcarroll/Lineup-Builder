@@ -9,7 +9,7 @@ const BRAND = '#2563EB';
 const INACTIVE = '#9CA3AF';
 
 const TAB_CONFIG = [
-  { name: 'index',    label: 'Roster',   icon: 'people-outline',        activeIcon: 'people'         },
+  { name: 'index',    label: 'Team',     icon: 'people-outline',        activeIcon: 'people'         },
   { name: 'schedule', label: 'Schedule', icon: 'calendar-outline',      activeIcon: 'calendar'       },
   { name: 'lineups',  label: 'Lineups',  icon: 'clipboard-outline',     activeIcon: 'clipboard'      },
   { name: 'profile',  label: 'Profile',  icon: 'person-circle-outline', activeIcon: 'person-circle'  },
@@ -89,7 +89,7 @@ function TabBar({ state, navigation }: TabBarProps) {
             gap: 2,
           }}>
             <Ionicons name={'shield-outline' as any} size={22} color={BRAND} />
-            <Text style={{ fontSize: 10, color: BRAND, fontWeight: '600' }}>Teams</Text>
+            <Text style={{ fontSize: 10, color: BRAND, fontWeight: '600' }}>Leagues</Text>
           </View>
         </TouchableOpacity>
 

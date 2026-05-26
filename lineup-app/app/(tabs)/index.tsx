@@ -7,6 +7,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import PlayerCard from '../../components/PlayerCard';
 import EditRulesModal from '../../components/EditRulesModal';
+import EditStrategiesModal from '../../components/EditStrategiesModal';
+import AddPlayerForm, { PosPrefs } from '../../components/AddPlayerForm';
 import { useTeamStore } from '../../stores/teamStore';
 import { supabase } from '../../lib/supabase';
 
@@ -124,57 +126,31 @@ function EditTeamModal({ visible, onClose, onSaved }: {
 
 // ─── Edit Roster ──────────────────────────────────────────────────────────────
 
-const FIELD_POSITIONS_ALL = ['LF', 'LC', 'RC', 'RF', 'SS', '2B', '3B', '1B', 'P', 'C'];
-
 function EditRosterModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const { players, fetchTeam } = useTeamStore();
-  const [view, setView] = useState<'list' | 'add'>('list');
-  const [name, setName] = useState('');
-  const [gender, setGender] = useState<'M' | 'F'>('M');
-  const [posPrefs, setPosPrefs] = useState<Record<string, 'preferred' | 'avoid' | null>>({});
-  const [saving, setSaving] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
 
   useEffect(() => {
-    if (!visible) { setView('list'); resetForm(); }
+    if (!visible) setAddOpen(false);
   }, [visible]);
 
-  function resetForm() {
-    setName('');
-    setGender('M');
-    setPosPrefs({});
-  }
+  async function handleAdd(name: string, gender: 'M' | 'F', posPrefs: PosPrefs) {
+    const { data: player, error } = await supabase
+      .from('players')
+      .insert({ team_id: TEAM_ID, name, gender, is_active: true } as any)
+      .select('id')
+      .single();
+    if (error || !player) return;
 
-  function togglePref(pos: string) {
-    setPosPrefs(prev => {
-      const cur = prev[pos];
-      return { ...prev, [pos]: !cur ? 'preferred' : cur === 'preferred' ? 'avoid' : null };
-    });
-  }
-
-  async function handleAdd() {
-    if (!name.trim()) return;
-    setSaving(true);
-    try {
-      const { data: player, error } = await supabase
-        .from('players')
-        .insert({ team_id: TEAM_ID, name: name.trim(), gender, is_active: true } as any)
-        .select('id')
-        .single();
-      if (error || !player) return;
-
-      const prefRows = Object.entries(posPrefs)
-        .filter(([, pref]) => pref)
-        .map(([position, preference]) => ({ player_id: (player as any).id, position, preference: preference! }));
-      if (prefRows.length > 0) {
-        await supabase.from('position_preferences').insert(prefRows as any);
-      }
-
-      await fetchTeam(TEAM_ID);
-      resetForm();
-      setView('list');
-    } finally {
-      setSaving(false);
+    const prefRows = Object.entries(posPrefs)
+      .filter(([, pref]) => pref)
+      .map(([position, preference]) => ({ player_id: (player as any).id, position, preference: preference! }));
+    if (prefRows.length > 0) {
+      await supabase.from('position_preferences').insert(prefRows as any);
     }
+
+    await fetchTeam(TEAM_ID);
+    setAddOpen(false);
   }
 
   function handleRemove(playerId: string, playerName: string) {
@@ -201,161 +177,75 @@ function EditRosterModal({ visible, onClose }: { visible: boolean; onClose: () =
           flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
           paddingHorizontal: 16, paddingVertical: 14, backgroundColor: '#1E40AF',
         }}>
-          {view === 'add' ? (
-            <TouchableOpacity onPress={() => { setView('list'); resetForm(); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Ionicons name={'chevron-back' as any} size={24} color="white" />
-            </TouchableOpacity>
-          ) : (
-            <View style={{ width: 24 }} />
-          )}
-          <Text style={{ fontSize: 18, fontWeight: '700', color: 'white' }}>
-            {view === 'add' ? 'Add Player' : 'Roster'}
-          </Text>
-          {view === 'list' ? (
-            <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Text style={{ color: 'white', fontSize: 16, fontWeight: '600' }}>Done</Text>
-            </TouchableOpacity>
-          ) : (
-            <View style={{ width: 40 }} />
-          )}
+          <View style={{ width: 24 }} />
+          <Text style={{ fontSize: 18, fontWeight: '700', color: 'white' }}>Roster</Text>
+          <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Text style={{ color: 'white', fontSize: 16, fontWeight: '600' }}>Done</Text>
+          </TouchableOpacity>
         </View>
 
-        {view === 'list' ? (
-          <>
-            <ScrollView contentContainerStyle={{ paddingTop: 12, paddingBottom: 32 }} showsVerticalScrollIndicator={false}>
-              {players.map((player) => {
-                const avatarColor = getAvatarColor(player.name);
-                return (
-                  <View key={player.id} style={{
-                    flexDirection: 'row', alignItems: 'center',
-                    backgroundColor: 'white', marginHorizontal: 16, marginBottom: 8,
-                    borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10,
-                    borderWidth: 1, borderColor: '#F3F4F6',
+        <>
+          <ScrollView contentContainerStyle={{ paddingTop: 12, paddingBottom: 32 }} showsVerticalScrollIndicator={false}>
+            {players.map((player) => {
+              const avatarColor = getAvatarColor(player.name);
+              return (
+                <View key={player.id} style={{
+                  flexDirection: 'row', alignItems: 'center',
+                  backgroundColor: 'white', marginHorizontal: 16, marginBottom: 8,
+                  borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10,
+                  borderWidth: 1, borderColor: '#F3F4F6',
+                }}>
+                  <View style={{
+                    width: 36, height: 36, borderRadius: 18,
+                    backgroundColor: avatarColor, alignItems: 'center', justifyContent: 'center', marginRight: 12,
                   }}>
-                    <View style={{
-                      width: 36, height: 36, borderRadius: 18,
-                      backgroundColor: avatarColor, alignItems: 'center', justifyContent: 'center', marginRight: 12,
-                    }}>
-                      <Text style={{ fontSize: 13, fontWeight: '700', color: 'white' }}>
-                        {getInitials(player.name)}
-                      </Text>
-                    </View>
-                    <Text style={{ flex: 1, fontSize: 15, fontWeight: '600', color: '#111827' }}>
-                      {player.name}
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: 'white' }}>
+                      {getInitials(player.name)}
                     </Text>
-                    <TouchableOpacity
-                      onPress={() => handleRemove(player.id, player.name)}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      style={{ padding: 4 }}
-                    >
-                      <Ionicons name={'trash-outline' as any} size={18} color="#9CA3AF" />
-                    </TouchableOpacity>
                   </View>
-                );
-              })}
-            </ScrollView>
-            <View style={{ paddingHorizontal: 16, paddingBottom: 32 }}>
-              <TouchableOpacity
-                onPress={() => setView('add')}
-                style={{
-                  flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-                  backgroundColor: '#2563EB', borderRadius: 12, paddingVertical: 14,
-                }}
-              >
-                <Ionicons name={'person-add-outline' as any} size={20} color="white" />
-                <Text style={{ color: 'white', fontWeight: '700', fontSize: 16 }}>Add Player</Text>
-              </TouchableOpacity>
+                  <Text style={{ flex: 1, fontSize: 15, fontWeight: '600', color: '#111827' }}>
+                    {player.name}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => handleRemove(player.id, player.name)}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    style={{ padding: 4 }}
+                  >
+                    <Ionicons name={'trash-outline' as any} size={18} color="#9CA3AF" />
+                  </TouchableOpacity>
+                </View>
+              );
+            })}
+          </ScrollView>
+          <View style={{ paddingHorizontal: 16, paddingBottom: 32 }}>
+            <TouchableOpacity
+              onPress={() => setAddOpen(true)}
+              style={{
+                flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+                backgroundColor: '#2563EB', borderRadius: 12, paddingVertical: 14,
+              }}
+            >
+              <Ionicons name={'person-add-outline' as any} size={20} color="white" />
+              <Text style={{ color: 'white', fontWeight: '700', fontSize: 16 }}>Add Player</Text>
+            </TouchableOpacity>
             </View>
           </>
-        ) : (
+
+        {/* Add Player bottom sheet */}
+        <Modal visible={addOpen} transparent animationType="slide">
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-            <ScrollView contentContainerStyle={{ padding: 20 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-              <Text style={{ fontSize: 13, fontWeight: '600', color: '#374151', marginBottom: 6 }}>Name</Text>
-              <TextInput
-                value={name}
-                onChangeText={setName}
-                placeholder="Player name"
-                placeholderTextColor="#9CA3AF"
-                autoFocus
-                style={{
-                  backgroundColor: 'white', borderWidth: 1, borderColor: '#E5E7EB',
-                  borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12,
-                  fontSize: 16, color: '#111827', marginBottom: 20,
-                }}
-                returnKeyType="done"
-              />
-
-              <Text style={{ fontSize: 13, fontWeight: '600', color: '#374151', marginBottom: 8 }}>Gender</Text>
-              <View style={{ flexDirection: 'row', gap: 10, marginBottom: 24 }}>
-                {(['M', 'F'] as const).map((g) => (
-                  <TouchableOpacity
-                    key={g}
-                    onPress={() => setGender(g)}
-                    style={{
-                      flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center',
-                      backgroundColor: gender === g ? (g === 'M' ? '#DBEAFE' : '#FCE7F3') : 'white',
-                      borderWidth: 1.5,
-                      borderColor: gender === g ? (g === 'M' ? '#3B82F6' : '#EC4899') : '#E5E7EB',
-                    }}
-                  >
-                    <Text style={{
-                      fontWeight: '700', fontSize: 15,
-                      color: gender === g ? (g === 'M' ? '#1D4ED8' : '#BE185D') : '#9CA3AF',
-                    }}>
-                      {g === 'M' ? 'Man' : 'Woman'}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+            <View style={{ flex: 1, justifyContent: 'flex-end' }}>
+              <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setAddOpen(false)} />
+              <View style={{ backgroundColor: 'white', borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '90%' }}>
+                <View style={{ width: 40, height: 4, backgroundColor: '#E5E7EB', borderRadius: 2, alignSelf: 'center', marginTop: 12, marginBottom: 4 }} />
+                <Text style={{ fontSize: 17, fontWeight: '700', color: '#111827', textAlign: 'center', paddingVertical: 12 }}>Add Player</Text>
+                <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+                  <AddPlayerForm onSubmit={handleAdd} submitLabel="Add to Roster" />
+                </ScrollView>
               </View>
-
-              <Text style={{ fontSize: 13, fontWeight: '600', color: '#374151', marginBottom: 4 }}>
-                Position Preferences{' '}
-                <Text style={{ fontWeight: '400', color: '#9CA3AF' }}>(optional)</Text>
-              </Text>
-              <Text style={{ fontSize: 12, color: '#9CA3AF', marginBottom: 12 }}>
-                Tap once for preferred · again for avoid · again to clear
-              </Text>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 28 }}>
-                {FIELD_POSITIONS_ALL.map((pos) => {
-                  const pref = posPrefs[pos];
-                  return (
-                    <TouchableOpacity
-                      key={pos}
-                      onPress={() => togglePref(pos)}
-                      style={{
-                        paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20,
-                        backgroundColor: pref === 'preferred' ? '#DCFCE7' : pref === 'avoid' ? '#FEE2E2' : 'white',
-                        borderWidth: 1.5,
-                        borderColor: pref === 'preferred' ? '#16A34A' : pref === 'avoid' ? '#EF4444' : '#E5E7EB',
-                      }}
-                    >
-                      <Text style={{
-                        fontSize: 14, fontWeight: '600',
-                        color: pref === 'preferred' ? '#15803D' : pref === 'avoid' ? '#DC2626' : '#9CA3AF',
-                      }}>
-                        {pos}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-
-              <TouchableOpacity
-                onPress={handleAdd}
-                disabled={saving || !name.trim()}
-                style={{
-                  backgroundColor: '#2563EB', borderRadius: 12,
-                  paddingVertical: 14, alignItems: 'center',
-                  opacity: !name.trim() ? 0.4 : 1,
-                }}
-              >
-                {saving
-                  ? <ActivityIndicator color="white" />
-                  : <Text style={{ color: 'white', fontWeight: '700', fontSize: 16 }}>Add to Roster</Text>}
-              </TouchableOpacity>
-            </ScrollView>
+            </View>
           </KeyboardAvoidingView>
-        )}
+        </Modal>
       </SafeAreaView>
     </Modal>
   );
@@ -364,9 +254,10 @@ function EditRosterModal({ visible, onClose }: { visible: boolean; onClose: () =
 // ─── Main screen ──────────────────────────────────────────────────────────────
 
 const ACTIONS = [
-  { icon: 'create-outline',       label: 'Edit Team Info' },
-  { icon: 'people-outline',       label: 'Edit Roster'    },
-  { icon: 'document-text-outline', label: 'Edit Rules'    },
+  { icon: 'create-outline',        label: 'Team Info'   },
+  { icon: 'people-outline',        label: 'Roster'      },
+  { icon: 'document-text-outline', label: 'Rules'       },
+  { icon: 'map-outline',           label: 'Strategies'  },
 ] as const;
 
 export default function RosterScreen() {
@@ -374,6 +265,7 @@ export default function RosterScreen() {
   const [editTeamOpen, setEditTeamOpen] = useState(false);
   const [editRosterOpen, setEditRosterOpen] = useState(false);
   const [editRulesOpen, setEditRulesOpen] = useState(false);
+  const [editStrategiesOpen, setEditStrategiesOpen] = useState(false);
 
   useEffect(() => { fetchTeam(TEAM_ID); }, []);
 
@@ -382,9 +274,10 @@ export default function RosterScreen() {
   const avatarColor = team ? getAvatarColor(team.name) : '#3B82F6';
 
   function handleAction(label: string) {
-    if (label === 'Edit Team Info') setEditTeamOpen(true);
-    else if (label === 'Edit Roster') setEditRosterOpen(true);
-    else if (label === 'Edit Rules') setEditRulesOpen(true);
+    if (label === 'Team Info') setEditTeamOpen(true);
+    else if (label === 'Roster') setEditRosterOpen(true);
+    else if (label === 'Rules') setEditRulesOpen(true);
+    else if (label === 'Strategies') setEditStrategiesOpen(true);
   }
 
   return (
@@ -473,6 +366,10 @@ export default function RosterScreen() {
       <EditRulesModal
         visible={editRulesOpen}
         onClose={() => setEditRulesOpen(false)}
+      />
+      <EditStrategiesModal
+        visible={editStrategiesOpen}
+        onClose={() => setEditStrategiesOpen(false)}
       />
     </SafeAreaView>
   );
