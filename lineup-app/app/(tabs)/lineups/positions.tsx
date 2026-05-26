@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+﻿import { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -280,13 +280,9 @@ export default function PositionsScreen() {
     setSelectedPos(posKey);
   }
 
-  // Tapping any table cell: jump to that inning and select that player.
-  // React 18 batches all setState calls here, so the selection setters below
-  // override the null-clears that switchInning schedules internally.
-  function handleCellPress(player: Player, inning: number) {
-    // If a position is selected, use only the player — ignore which inning column was tapped
+  function handleRowPress(player: Player) {
+    // If a position is selected, assign this player to it
     if (selectedPos !== null) {
-      // Tapping the player already occupying the selected position cancels selection
       if (assignments[selectedPos]?.id === player.id) {
         setSelectedPos(null);
         return;
@@ -295,7 +291,6 @@ export default function PositionsScreen() {
       const playerCurrentPos = Object.entries(assignments).find(([, p]) => p?.id === player.id)?.[0];
       updateAssignments(prev => {
         const next = { ...prev };
-        // Swap occupant into the player's old position (or bench them if player had none)
         if (playerCurrentPos) next[playerCurrentPos] = occupant ?? null;
         next[selectedPos] = player;
         return next;
@@ -304,21 +299,15 @@ export default function PositionsScreen() {
       return;
     }
 
-    // Toggle off if already selected for this exact cell
-    if (inning === currentInning && player.id === selectedPlayerId) {
+    // Toggle off if already selected
+    if (player.id === selectedPlayerId) {
       setSelectedPos(null);
       setBenchSelectedPlayer(null);
       return;
     }
 
-    const targetData = inningAssignments[inning] ?? emptyInning();
-    const fieldPos = Object.entries(targetData).find(([, p]) => p?.id === player.id)?.[0] as PositionKey | undefined;
-
-    // Switch inning without auto-copy
-    setCurrentInning(inning);
-    setInningAssignments(prev => prev[inning] ? prev : { ...prev, [inning]: emptyInning() });
-
-    // Set selection — these run after the null-clears inside switchInning so they win
+    // Select player — if they have a position this inning, select that position; otherwise bench-select
+    const fieldPos = Object.entries(assignments).find(([, p]) => p?.id === player.id)?.[0] as PositionKey | undefined;
     if (fieldPos) {
       setBenchSelectedPlayer(null);
       setSelectedPos(fieldPos);
@@ -355,6 +344,21 @@ export default function PositionsScreen() {
   const activePlayer     = isBenchMode ? benchSelectedPlayer : selectedPos ? assignments[selectedPos] : null;
   const selectedPlayerId = benchSelectedPlayer?.id ?? (selectedPos ? assignments[selectedPos]?.id : undefined);
   const inningNums       = Array.from({ length: INNINGS_COUNT }, (_, i) => i + 1);
+
+  const bannerWarnings: string[] = [];
+  inningNums.forEach(n => {
+    getInningColWarnings(n).forEach(w => bannerWarnings.push(`Inning ${n}: ${w}`));
+  });
+  players.forEach(p => {
+    getPlayerRowWarnings(p).forEach(w => bannerWarnings.push(`${p.name.split(' ')[0]}: ${w}`));
+  });
+  const hintText = isBenchMode
+    ? 'Tap a position to place · tap player again to cancel'
+    : selectedPos && !assignments[selectedPos]
+    ? 'Tap a player to assign · tap position again to cancel'
+    : selectedPos
+    ? 'Tap a player or position to move · tap again to cancel'
+    : 'Tap a player or position to begin · long-press to remove';
 
   const sortedPlayers = selectedPos
     ? [...players].sort((a, b) => {
@@ -447,15 +451,24 @@ export default function PositionsScreen() {
           })}
         </Pressable>
 
-        <Text className="text-xs text-gray-400 text-center mt-2 mb-2">
-          {isBenchMode
-            ? 'Tap a position to place · tap player again to cancel'
-            : selectedPos && !assignments[selectedPos]
-            ? 'Tap a player to assign · tap position again to cancel'
-            : selectedPos
-            ? 'Tap a player or position to move · tap again to cancel'
-            : 'Tap any position or player to begin · long-press to remove'}
-        </Text>
+        <TouchableOpacity
+          onPress={() => bannerWarnings.length > 0 && Alert.alert('Alignment Issues', bannerWarnings.join('\n\n'))}
+          activeOpacity={bannerWarnings.length > 0 ? 0.7 : 1}
+          style={{
+            flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+            marginHorizontal: 16, marginTop: 6, marginBottom: 4,
+            paddingVertical: 7, paddingHorizontal: 12, borderRadius: 8,
+            backgroundColor: bannerWarnings.length > 0 ? '#FEF9C3' : '#F3F4F6',
+            ...(bannerWarnings.length > 0 ? { borderWidth: 1, borderColor: '#FDE68A' } : {}),
+          }}
+        >
+          {bannerWarnings.length > 0 && <Text style={{ fontSize: 13 }}>⚠</Text>}
+          <Text style={{ fontSize: 12, color: bannerWarnings.length > 0 ? '#854D0E' : '#9CA3AF', textAlign: 'center' }}>
+            {bannerWarnings.length > 0
+              ? `${bannerWarnings.length} issue${bannerWarnings.length > 1 ? 's' : ''} — tap for details`
+              : hintText}
+          </Text>
+        </TouchableOpacity>
       </View>
 
       {/* ── Independently scrollable player table ────────────────────────── */}
@@ -465,60 +478,43 @@ export default function PositionsScreen() {
           <View style={{ width: NAME_COL_W }}>
             <Text className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Player</Text>
           </View>
-          {inningNums.map(n => {
-            const colWarns = getInningColWarnings(n);
-            return (
-              <View key={n} style={{ flex: 1 }} className="items-center">
-                {colWarns.length > 0
-                  ? <TouchableOpacity onPress={() => Alert.alert('Inning Warning', colWarns.join('\n\n'))}>
-                      <Text style={{ fontSize: 11, color: '#EAB308', lineHeight: 14 }}>⚠</Text>
-                    </TouchableOpacity>
-                  : <View style={{ height: 14 }} />}
-                <TouchableOpacity onPress={() => switchInning(n)}>
-                  <Text className={`text-xs font-semibold ${n === currentInning ? 'text-brand' : 'text-gray-400'}`}>
-                    {n}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            );
-          })}
-          <View style={{ width: WARN_COL_W }} />
+          {inningNums.map(n => (
+            <View key={n} style={{ flex: 1 }} className="items-center">
+              <Text className={`text-xs font-semibold ${n === currentInning ? 'text-brand' : 'text-gray-400'}`}>
+                {n}
+              </Text>
+            </View>
+          ))}
         </View>
 
         {/* Scrollable rows */}
         <ScrollView showsVerticalScrollIndicator={false}>
           {sortedPlayers.map((player, idx) => {
-            const warning      = getWarning(player.id);
-            const rowWarnings  = getPlayerRowWarnings(player);
             const isRowSelected = player.id === selectedPlayerId;
             const isLast       = idx === sortedPlayers.length - 1;
             const prefForPos   = selectedPos
               ? player.position_preferences?.find(pp => pp.position === selectedPos)?.preference
               : null;
-            const dotColor     = prefForPos === 'preferred' ? '#22C55E'
-              : prefForPos === 'avoid'      ? '#EF4444'
-              : warning === 'bench'         ? '#FCD34D'
-              : warning === 'repeat'        ? '#F97316'
-              : '#D1D5DB';
+            const rowBg = isRowSelected
+              ? '#EFF6FF'
+              : prefForPos === 'preferred' ? '#bcf5cf'
+              : prefForPos === 'avoid'     ? '#FFF1F2'
+              : undefined;
 
             return (
-              <View
+              <TouchableOpacity
                 key={player.id}
-                className={`flex-row items-center ${!isLast ? 'border-b border-gray-50' : ''} ${isRowSelected ? 'bg-blue-50' : ''}`}
+                onPress={() => handleRowPress(player)}
+                activeOpacity={0.6}
+                style={rowBg ? { backgroundColor: rowBg } : undefined}
+                className={`flex-row items-center ${!isLast ? 'border-b border-gray-50' : ''}`}
               >
-                {/* Name cell — tapping selects for the current inning */}
-                <TouchableOpacity
-                  onPress={() => handleCellPress(player, currentInning)}
-                  activeOpacity={0.6}
-                  style={{ width: NAME_COL_W, overflow: 'hidden' }}
-                  className="flex-row items-center gap-1 px-3 py-2.5"
-                >
+                <View style={{ width: NAME_COL_W, overflow: 'hidden' }} className="flex-row items-center gap-1 px-3 py-2.5">
                   <GenderCorner gender={player.gender} size={8} />
-                  <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: dotColor, flexShrink: 0 }} />
                   <Text className="text-sm font-medium text-gray-900 flex-shrink" numberOfLines={1}>
                     {player.name.split(' ')[0]}
                   </Text>
-                </TouchableOpacity>
+                </View>
 
                 {/* Inning cells */}
                 {inningNums.map(n => {
@@ -528,13 +524,7 @@ export default function PositionsScreen() {
                   const { text, bg } = cellColors(pos);
 
                   return (
-                    <TouchableOpacity
-                      key={n}
-                      onPress={() => handleCellPress(player, n)}
-                      activeOpacity={0.6}
-                      style={{ flex: 1 }}
-                      className="items-center py-2.5"
-                    >
+                    <View key={n} style={{ flex: 1 }} className="items-center py-2.5">
                       {hasData ? (
                         <View style={{
                           backgroundColor: isCellSelected ? '#3B82F6' : bg,
@@ -557,21 +547,12 @@ export default function PositionsScreen() {
                       ) : (
                         <Text style={{ fontSize: 12, color: '#E5E7EB' }}>·</Text>
                       )}
-                    </TouchableOpacity>
+                    </View>
                   );
                 })}
 
-                {/* Row warning */}
-                <TouchableOpacity
-                  style={{ width: WARN_COL_W, alignItems: 'center', justifyContent: 'center' }}
-                  onPress={() => rowWarnings.length > 0 && Alert.alert('Player Warning', rowWarnings.join('\n\n'))}
-                  activeOpacity={rowWarnings.length > 0 ? 0.6 : 1}
-                >
-                  {rowWarnings.length > 0 && (
-                    <Text style={{ fontSize: 11, color: '#EAB308' }}>⚠</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
+
+              </TouchableOpacity>
             );
           })}
         </ScrollView>

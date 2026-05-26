@@ -27,6 +27,12 @@ export default function LineupsScreen() {
 
   useFocusEffect(useCallback(() => { fetchGames(TEAM_ID); }, []));
   useFocusEffect(useCallback(() => { if (games.length > 0) fetchLineupStatuses(); }, [games]));
+  useFocusEffect(useCallback(() => {
+    if (games.length === 0 || selectedGame !== null) return;
+    const today = new Date().toISOString().slice(0, 10);
+    const nearest = games.find((g) => g.date.slice(0, 10) >= today) ?? null;
+    if (nearest) selectGame(nearest);
+  }, [games, selectedGame]));
 
   async function fetchLineupStatuses() {
     const { data: lineups } = await supabase

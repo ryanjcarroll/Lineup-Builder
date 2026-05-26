@@ -34,7 +34,7 @@ export default function ScheduleScreen() {
           'Remove Game',
           `Remove game on ${formatDate(date)}?`,
           [
-            { text: 'Cancel', style: 'cancel' },
+            { text: 'Back', style: 'cancel' },
             { text: 'Remove', style: 'destructive', onPress: () => removeGame(game.id) },
           ]
         );
@@ -112,7 +112,7 @@ export default function ScheduleScreen() {
                         'Remove Game',
                         `Remove game on ${formatDate(game.date.slice(0, 10))}?`,
                         [
-                          { text: 'Cancel', style: 'cancel' },
+                          { text: 'Back', style: 'cancel' },
                           { text: 'Remove', style: 'destructive', onPress: () => removeGame(game.id) },
                         ]
                       );
