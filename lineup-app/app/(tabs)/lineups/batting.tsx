@@ -286,7 +286,7 @@ export default function BattingOrderScreen() {
       'Remove Ghost Batter',
       'Remove this ghost batter from the lineup?',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: 'Back', style: 'cancel' },
         {
           text: 'Remove', style: 'destructive', onPress: () => {
             const idx = slots.findIndex((p) => p.id === playerId);

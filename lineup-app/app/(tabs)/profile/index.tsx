@@ -16,7 +16,7 @@ export default function ProfileScreen() {
 
   function handleSignOut() {
     Alert.alert('Sign out', 'Are you sure you want to sign out?', [
-      { text: 'Cancel', style: 'cancel' },
+      { text: 'Back', style: 'cancel' },
       {
         text: 'Sign out',
         style: 'destructive',

@@ -180,7 +180,7 @@ export default function GameRosterScreen() {
       'Remove Sub',
       `Remove ${sub.name.split(' ')[0]} from this game?`,
       [
-        { text: 'Keep', style: 'cancel' },
+        { text: 'Back', style: 'cancel' },
         {
           text: 'Remove',
           style: 'destructive',

@@ -4,7 +4,7 @@ import {
   KeyboardAvoidingView, Platform, ActivityIndicator, Alert, ScrollView, Image,
   useWindowDimensions,
 } from 'react-native';
-import { Tabs } from 'expo-router';
+import { Tabs, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTeamStore } from '../../stores/teamStore';
@@ -39,10 +39,10 @@ function getInitials(name: string): string {
 // ─── Team Switcher Sheet ──────────────────────────────────────────────────────
 
 function TeamSwitcherSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
-  const { team, teams, switchTeam, createTeam, fetchTeamByOwner } = useTeamStore();
+  const { team, teams, switchTeam, createTeam, fetchTeam, fetchTeamByOwner } = useTeamStore();
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
-  type SheetMode = 'list' | 'fork' | 'create' | 'join-code' | 'join-claim';
+  type SheetMode = 'list' | 'fork' | 'create' | 'add-self' | 'join-code' | 'join-claim';
   const [mode, setMode] = useState<SheetMode>('list');
   const [newName, setNewName] = useState('');
   const [newSport, setNewSport] = useState<Sport>('softball');
@@ -67,12 +67,29 @@ function TeamSwitcherSheet({ visible, onClose }: { visible: boolean; onClose: ()
     onClose();
   }
 
-  async function handleCreate() {
+  function handleCreate() {
     if (!newName.trim()) return;
+    setMode('add-self');
+  }
+
+  async function handleCreateWithSelf(name: string, gender: 'M' | 'F', posPrefs: PosPrefs) {
     setCreating(true);
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
       await createTeam(newName.trim(), newSport);
-      setMode('list'); setNewName('');
+      const newTeam = useTeamStore.getState().team;
+      if (!newTeam) throw new Error('Team creation failed');
+      const { data: player } = await (supabase.from('players') as any)
+        .insert({ team_id: newTeam.id, name, gender, is_active: true, user_id: user.id })
+        .select('id').single();
+      const prefRows = Object.entries(posPrefs)
+        .filter(([, pref]) => pref)
+        .map(([position, preference]) => ({ player_id: (player as any).id, position, preference: preference! }));
+      if (prefRows.length > 0) await (supabase.from('position_preferences') as any).insert(prefRows);
+      await fetchTeam(newTeam.id);
+      onClose();
+      router.navigate('/(tabs)');
     } catch {
       Alert.alert('Error', 'Could not create team. Please try again.');
     } finally {
@@ -118,7 +135,9 @@ function TeamSwitcherSheet({ visible, onClose }: { visible: boolean; onClose: ()
     try {
       await (supabase.from('players') as any).update({ user_id: user.id }).eq('id', playerId);
       await fetchTeamByOwner();
+      if (joinFoundTeam) await switchTeam(joinFoundTeam.id);
       onClose();
+      router.navigate('/(tabs)');
     } finally {
       setJoinLoading(false);
     }
@@ -135,7 +154,9 @@ function TeamSwitcherSheet({ visible, onClose }: { visible: boolean; onClose: ()
       .map(([position, preference]) => ({ player_id: (player as any).id, position, preference: preference! }));
     if (prefRows.length > 0) await (supabase.from('position_preferences') as any).insert(prefRows);
     await fetchTeamByOwner();
+    await switchTeam(joinFoundTeam.id);
     onClose();
+    router.navigate('/(tabs)');
   }
 
   function SheetHeader({ title, onBack }: { title: string; onBack: () => void }) {
@@ -227,9 +248,27 @@ function TeamSwitcherSheet({ visible, onClose }: { visible: boolean; onClose: ()
                     );
                   })}
                 </View>
-                <TouchableOpacity onPress={handleCreate} disabled={creating || !newName.trim()} style={{ backgroundColor: BRAND, borderRadius: 12, paddingVertical: 14, alignItems: 'center', opacity: creating || !newName.trim() ? 0.4 : 1 }}>
-                  {creating ? <ActivityIndicator color="white" /> : <Text style={{ color: 'white', fontWeight: '700', fontSize: 16 }}>Create Team</Text>}
+                <TouchableOpacity onPress={handleCreate} disabled={!newName.trim()} style={{ backgroundColor: BRAND, borderRadius: 12, paddingVertical: 14, alignItems: 'center', opacity: !newName.trim() ? 0.4 : 1 }}>
+                  <Text style={{ color: 'white', fontWeight: '700', fontSize: 16 }}>Continue</Text>
                 </TouchableOpacity>
+              </View>
+            )}
+
+            {/* Add self to new team */}
+            {mode === 'add-self' && (
+              <View style={{ paddingHorizontal: 20, paddingBottom: 36, maxHeight: windowHeight * 0.82 }}>
+                <SheetHeader title="Add Yourself" onBack={() => setMode('create')} />
+                <Text style={{ fontSize: 13, color: '#6B7280', marginBottom: 16 }}>
+                  Add yourself to <Text style={{ fontWeight: '600', color: '#111827' }}>{newName}</Text> to get started.
+                </Text>
+                <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+                  <AddPlayerForm
+                    onSubmit={handleCreateWithSelf}
+                    namePlaceholder="Your name"
+                    submitLabel="Create Team"
+                    resetOnSubmit={false}
+                  />
+                </ScrollView>
               </View>
             )}
 

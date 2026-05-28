@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, ActivityIndicator,
   Modal, TextInput, KeyboardAvoidingView, Platform, Alert, Image, Dimensions,
@@ -14,6 +14,7 @@ import AddPlayerForm, { PosPrefs } from '../../components/AddPlayerForm';
 import { useTeamStore } from '../../stores/teamStore';
 import { supabase } from '../../lib/supabase';
 import { Sport, Team, Player } from '../../types/database';
+import { useFocusEffect } from 'expo-router';
 
 // One-time migration: ensure any player with LC or RC also has all three (LC, CF, RC)
 // with the same preference, since CF is now the canonical "center outfield" group selector.
@@ -89,7 +90,7 @@ function EditTeamModal({ visible, onClose, onSaved, isCaptain }: {
       'Delete Team',
       `Permanently delete "${team?.name}" and all its players, games, and lineups? This cannot be undone.`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: 'Back', style: 'cancel' },
         {
           text: 'Delete', style: 'destructive', onPress: async () => {
             onClose();
@@ -105,7 +106,7 @@ function EditTeamModal({ visible, onClose, onSaved, isCaptain }: {
       'Leave Team',
       `Leave "${team?.name}"? You'll be removed from the roster.`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: 'Back', style: 'cancel' },
         {
           text: 'Leave', style: 'destructive', onPress: async () => {
             onClose();
@@ -295,11 +296,12 @@ function EditTeamModal({ visible, onClose, onSaved, isCaptain }: {
 
 interface PopupMenuItem { label: string; onPress: () => void }
 
-function PopupMenu({ items, anchorRef, visible, onClose }: {
+function PopupMenu({ items, anchorRef, visible, onClose, preferAbove = false }: {
   items: PopupMenuItem[];
   anchorRef: React.RefObject<any>;
   visible: boolean;
   onClose: () => void;
+  preferAbove?: boolean;
 }) {
   const [pos, setPos] = useState<{ top: number; right: number } | null>(null);
   const insets = useSafeAreaInsets();
@@ -312,7 +314,7 @@ function PopupMenu({ items, anchorRef, visible, onClose }: {
         // pageY is from the top of the full screen; Modal coordinate space starts
         // below the status bar/notch, so subtract the top inset to align correctly.
         const adjustedY = pageY - insets.top;
-        const showAbove = adjustedY + height + estimatedMenuHeight > screenHeight - 80;
+        const showAbove = preferAbove || adjustedY + height + estimatedMenuHeight > screenHeight - 80;
         setPos({
           top: showAbove ? adjustedY - estimatedMenuHeight - 4 : adjustedY + height + 4,
           right: Dimensions.get('window').width - pageX - width,
@@ -415,6 +417,22 @@ export default function RosterScreen() {
     if (team && !team.invite_code) ensureInviteCode(team.id);
   }, [team?.id, team?.invite_code]);
 
+  // Reset selection mode when the active team changes (team switcher)
+  useEffect(() => {
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+  }, [team?.id]);
+
+  // Reset selection mode when the user navigates away from this tab
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        setSelectionMode(false);
+        setSelectedIds(new Set());
+      };
+    }, [])
+  );
+
   async function handleCopyCode() {
     if (!team?.invite_code) return;
     await Clipboard.setStringAsync(team.invite_code);
@@ -505,7 +523,7 @@ export default function RosterScreen() {
       'Remove Players',
       `Remove ${ids.length} player${ids.length > 1 ? 's' : ''} from the roster?`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: 'Back', style: 'cancel' },
         {
           text: 'Remove', style: 'destructive', onPress: async () => {
             await (supabase.from('players') as any)
@@ -936,7 +954,19 @@ export default function RosterScreen() {
             })
             .map((player) => {
               const isSelected = selectedIds.has(player.id);
+              const isCaptain = player.user_id === team.owner_id;
+              const isMe = !!currentUserId && player.user_id === currentUserId;
               if (selectionMode) {
+                if (isCaptain && isMe) {
+                  return (
+                    <PlayerCard
+                      key={player.id}
+                      player={player}
+                      isCaptain={isCaptain}
+                      isMe={isMe}
+                    />
+                  );
+                }
                 return (
                   <TouchableOpacity
                     key={player.id}
@@ -950,8 +980,8 @@ export default function RosterScreen() {
                   >
                     <PlayerCard
                       player={player}
-                      isCaptain={player.user_id === team.owner_id}
-                      isMe={!!currentUserId && player.user_id === currentUserId}
+                      isCaptain={isCaptain}
+                      isMe={isMe}
                       isSelected={isSelected}
                     />
                   </TouchableOpacity>
@@ -961,9 +991,9 @@ export default function RosterScreen() {
                 <PlayerCard
                   key={player.id}
                   player={player}
-                  isCaptain={player.user_id === team.owner_id}
-                  isMe={!!currentUserId && player.user_id === currentUserId}
-                  onEdit={player.user_id === currentUserId && currentUserId ? () => setEditSelfOpen(true) : undefined}
+                  isCaptain={isCaptain}
+                  isMe={isMe}
+                  onEdit={isMe ? () => setEditSelfOpen(true) : undefined}
                 />
               );
             })}
@@ -1072,6 +1102,7 @@ export default function RosterScreen() {
         anchorRef={fabRef}
         visible={fabMenuOpen}
         onClose={() => setFabMenuOpen(false)}
+        preferAbove
         items={[
           { label: 'Add Player', onPress: () => setAddPlayerOpen(true) },
           { label: 'Copy Invite Code', onPress: handleCopyCode },
