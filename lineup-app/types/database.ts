@@ -3,6 +3,15 @@ export type Preference = 'preferred' | 'avoid';
 export type LineupStatus = 'draft' | 'generated' | 'approved';
 export type Gender = 'M' | 'F';
 
+export interface Profile {
+  id: string;
+  display_name: string | null;
+  gender: Gender | null;
+  photo_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface TeamRules {
   players_in_field: number;
   min_players_to_play: number;
@@ -33,6 +42,7 @@ export interface Player {
   user_id: string | null;
   created_at: string;
   position_preferences?: PositionPreference[];
+  profile?: Profile | null;
 }
 
 export interface PositionPreference {
@@ -82,12 +92,21 @@ export interface BattingOrder {
   player_id: string;
 }
 
+// Resolve display name/gender: profile wins for linked players, player fields for ghosts.
+export function playerName(p: Player): string {
+  return p.profile?.display_name ?? p.name;
+}
+export function playerGender(p: Player): Gender {
+  return p.profile?.gender ?? p.gender;
+}
+
 // Supabase client generic — extend as tables are added
 export interface Database {
   public: {
     Tables: {
       teams: { Row: Team; Insert: Omit<Team, 'id' | 'created_at' | 'photo_url'>; Update: Partial<Team> };
-      players: { Row: Player; Insert: Omit<Player, 'id' | 'created_at' | 'position_preferences'>; Update: Partial<Player> };
+      players: { Row: Player; Insert: Omit<Player, 'id' | 'created_at' | 'position_preferences' | 'profile'>; Update: Partial<Player> };
+      profiles: { Row: Profile; Insert: Omit<Profile, 'created_at' | 'updated_at'>; Update: Partial<Omit<Profile, 'id' | 'created_at' | 'updated_at'>> };
       position_preferences: { Row: PositionPreference; Insert: PositionPreference; Update: Partial<PositionPreference> };
       games: { Row: Game; Insert: Omit<Game, 'id' | 'created_at'>; Update: Partial<Game> };
       game_roster: { Row: GameRoster; Insert: GameRoster; Update: Partial<GameRoster> };

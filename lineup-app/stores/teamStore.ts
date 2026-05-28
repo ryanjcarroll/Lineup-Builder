@@ -1,6 +1,33 @@
 import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
-import { Player, Sport, Team } from '../types/database';
+import { Player, Profile, Sport, Team } from '../types/database';
+
+async function fetchPlayersWithProfiles(teamId: string): Promise<Player[]> {
+  const { data, error } = await supabase
+    .from('players')
+    .select('*, position_preferences(*)')
+    .eq('team_id', teamId)
+    .eq('is_active', true)
+    .order('name');
+
+  if (error) throw error;
+  const players: Player[] = (data ?? []) as Player[];
+
+  const userIds = players.map((p) => p.user_id).filter((id): id is string => !!id);
+  if (userIds.length === 0) return players;
+
+  const { data: profileRows } = await (supabase.from('profiles') as any)
+    .select('*')
+    .in('id', userIds);
+
+  const profileMap = new Map<string, Profile>();
+  (profileRows ?? []).forEach((p: Profile) => profileMap.set(p.id, p));
+
+  return players.map((p) => ({
+    ...p,
+    profile: p.user_id ? (profileMap.get(p.user_id) ?? null) : null,
+  }));
+}
 
 const INVITE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 
@@ -45,20 +72,13 @@ export const useTeamStore = create<TeamStore>((set, get) => ({
   fetchTeam: async (teamId: string) => {
     set({ loading: true, error: null });
     try {
-      const [teamResult, playersResult] = await Promise.all([
+      const [teamResult, players] = await Promise.all([
         supabase.from('teams').select('*').eq('id', teamId).single(),
-        supabase
-          .from('players')
-          .select('*, position_preferences(*)')
-          .eq('team_id', teamId)
-          .eq('is_active', true)
-          .order('name'),
+        fetchPlayersWithProfiles(teamId),
       ]);
 
       if (teamResult.error) throw teamResult.error;
-      if (playersResult.error) throw playersResult.error;
-
-      set({ team: teamResult.data, players: playersResult.data ?? [], loading: false });
+      set({ team: teamResult.data, players, loading: false });
     } catch (err) {
       set({ error: (err as Error).message, loading: false });
     }
@@ -102,14 +122,8 @@ export const useTeamStore = create<TeamStore>((set, get) => ({
       }
 
       const activeTeam = allTeams[0];
-      const playersResult = await (supabase.from('players') as any)
-        .select('*, position_preferences(*)')
-        .eq('team_id', activeTeam.id)
-        .eq('is_active', true)
-        .order('name');
-
-      if (playersResult.error) throw playersResult.error;
-      set({ team: activeTeam, teams: allTeams, players: playersResult.data ?? [], loading: false });
+      const players = await fetchPlayersWithProfiles(activeTeam.id);
+      set({ team: activeTeam, teams: allTeams, players, loading: false });
     } catch (err) {
       set({ error: (err as Error).message, loading: false });
     }
@@ -121,15 +135,8 @@ export const useTeamStore = create<TeamStore>((set, get) => ({
 
     set({ loading: true });
     try {
-      const playersResult = await supabase
-        .from('players')
-        .select('*, position_preferences(*)')
-        .eq('team_id', teamId)
-        .eq('is_active', true)
-        .order('name');
-
-      if (playersResult.error) throw playersResult.error;
-      set({ team: target, players: playersResult.data ?? [], loading: false });
+      const players = await fetchPlayersWithProfiles(teamId);
+      set({ team: target, players, loading: false });
     } catch (err) {
       set({ error: (err as Error).message, loading: false });
     }
@@ -213,12 +220,8 @@ export const useTeamStore = create<TeamStore>((set, get) => ({
       const remaining = get().teams.filter((t) => t.id !== teamId);
       if (remaining.length > 0) {
         const next = remaining[0];
-        const { data: playersData } = await (supabase.from('players') as any)
-          .select('*, position_preferences(*)')
-          .eq('team_id', next.id)
-          .eq('is_active', true)
-          .order('name');
-        set({ team: next, teams: remaining, players: playersData ?? [] });
+        const players = await fetchPlayersWithProfiles(next.id);
+        set({ team: next, teams: remaining, players });
       } else {
         set({ team: null, teams: [], players: [] });
       }

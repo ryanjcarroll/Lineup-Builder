@@ -11,7 +11,7 @@ import GenderCorner from '../../../components/GenderCorner';
 import { useTeamStore } from '../../../stores/teamStore';
 import { useGameStore } from '../../../stores/gameStore';
 import { supabase } from '../../../lib/supabase';
-import { Player } from '../../../types/database';
+import { Player, playerName, playerGender } from '../../../types/database';
 import { DEFAULT_RULES } from '../../../components/EditRulesModal';
 
 
@@ -178,7 +178,7 @@ export default function GameRosterScreen() {
     if (!selectedGame) return;
     Alert.alert(
       'Remove Sub',
-      `Remove ${sub.name.split(' ')[0]} from this game?`,
+      `Remove ${playerName(sub).split(' ')[0]} from this game?`,
       [
         { text: 'Back', style: 'cancel' },
         {
@@ -202,7 +202,7 @@ export default function GameRosterScreen() {
   const maxField = team?.rules?.players_in_field ?? DEFAULT_RULES.players_in_field;
   const maxMenField = team?.rules?.max_male_in_field ?? DEFAULT_RULES.max_male_in_field;
   const allAttending = [...players.filter((p) => attending.has(p.id)), ...subs];
-  const womenAttending = allAttending.filter((p) => p.gender === 'F').length;
+  const womenAttending = allAttending.filter((p) => playerGender(p) === 'F').length;
   const fieldersAllowed = Math.min(maxField, womenAttending + maxMenField, allAttending.length);
   const fieldersReduced = fieldersAllowed < maxField;
 
@@ -286,8 +286,8 @@ export default function GameRosterScreen() {
               paddingHorizontal: 16, paddingBottom: 4,
             }}>
               {(() => {
-                const men = allAttending.filter((p) => p.gender === 'M').length;
-                const women = allAttending.filter((p) => p.gender === 'F').length;
+                const men = allAttending.filter((p) => playerGender(p) === 'M').length;
+                const women = allAttending.filter((p) => playerGender(p) === 'F').length;
                 const total = allAttending.length;
                 return `${total} player${total !== 1 ? 's' : ''} attending (${men} men, ${women} women)`;
               })()}
@@ -314,18 +314,18 @@ export default function GameRosterScreen() {
                     borderWidth: 1, borderColor: '#F3F4F6', overflow: 'hidden',
                   }}
                 >
-                  <GenderCorner gender={player.gender} />
+                  <GenderCorner gender={playerGender(player)} />
                   <View style={{
                     width: 34, height: 34, borderRadius: 17,
-                    backgroundColor: getAvatarColor(player.name),
+                    backgroundColor: getAvatarColor(playerName(player)),
                     alignItems: 'center', justifyContent: 'center', marginRight: 12,
                   }}>
                     <Text style={{ fontSize: 12, fontWeight: '700', color: 'white' }}>
-                      {getInitials(player.name)}
+                      {getInitials(playerName(player))}
                     </Text>
                   </View>
                   <Text style={{ flex: 1, fontSize: 15, fontWeight: '600', color: '#111827' }}>
-                    {player.name}
+                    {playerName(player)}
                   </Text>
                   <Switch
                     value={attending.has(player.id)}
@@ -358,18 +358,18 @@ export default function GameRosterScreen() {
                     borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10,
                     borderWidth: 1, borderColor: '#F3F4F6', overflow: 'hidden',
                   }}>
-                    <GenderCorner gender={sub.gender} />
+                    <GenderCorner gender={playerGender(sub)} />
                     <View style={{
                       width: 34, height: 34, borderRadius: 17,
-                      backgroundColor: getAvatarColor(sub.name),
+                      backgroundColor: getAvatarColor(playerName(sub)),
                       alignItems: 'center', justifyContent: 'center', marginRight: 12,
                     }}>
                       <Text style={{ fontSize: 12, fontWeight: '700', color: 'white' }}>
-                        {getInitials(sub.name)}
+                        {getInitials(playerName(sub))}
                       </Text>
                     </View>
                     <Text style={{ flex: 1, fontSize: 15, fontWeight: '600', color: '#111827' }}>
-                      {sub.name}
+                      {playerName(sub)}
                     </Text>
                     <View style={{
                       backgroundColor: '#EDE9FE', borderRadius: 6,

@@ -9,7 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTeamStore } from '../../stores/teamStore';
 import { supabase } from '../../lib/supabase';
-import AddPlayerForm, { PosPrefs } from '../../components/AddPlayerForm';
+import { PosPrefs } from '../../components/AddPlayerForm';
 import { Sport, Team, Player } from '../../types/database';
 
 const BRAND = '#2563EB';
@@ -36,6 +36,47 @@ function getInitials(name: string): string {
     : (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
+// ─── Position Preferences Grid ───────────────────────────────────────────────
+
+const PREF_POSITIONS = ['P', 'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF'];
+
+function PosPrefsGrid({ posPrefs, onToggle }: { posPrefs: PosPrefs; onToggle: (pos: string) => void }) {
+  return (
+    <>
+      <Text style={{ fontSize: 13, fontWeight: '600', color: '#374151', marginBottom: 4 }}>
+        Position Preferences <Text style={{ fontWeight: '400', color: '#9CA3AF' }}>(optional)</Text>
+      </Text>
+      <Text style={{ fontSize: 12, color: '#9CA3AF', marginBottom: 14 }}>
+        Tap once for preferred · again for avoid · again to clear
+      </Text>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 28 }}>
+        {PREF_POSITIONS.map((pos) => {
+          const pref = posPrefs[pos];
+          return (
+            <TouchableOpacity
+              key={pos}
+              onPress={() => onToggle(pos)}
+              style={{
+                paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20,
+                backgroundColor: pref === 'preferred' ? '#DCFCE7' : pref === 'avoid' ? '#FEE2E2' : 'white',
+                borderWidth: 1.5,
+                borderColor: pref === 'preferred' ? '#16A34A' : pref === 'avoid' ? '#EF4444' : '#E5E7EB',
+              }}
+            >
+              <Text style={{
+                fontSize: 14, fontWeight: '600',
+                color: pref === 'preferred' ? '#15803D' : pref === 'avoid' ? '#DC2626' : '#9CA3AF',
+              }}>
+                {pos}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    </>
+  );
+}
+
 // ─── Team Switcher Sheet ──────────────────────────────────────────────────────
 
 function TeamSwitcherSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
@@ -53,14 +94,33 @@ function TeamSwitcherSheet({ visible, onClose }: { visible: boolean; onClose: ()
   const [joinFoundTeam, setJoinFoundTeam] = useState<Team | null>(null);
   const [joinUnclaimed, setJoinUnclaimed] = useState<Player[]>([]);
   const [showJoinNewPlayer, setShowJoinNewPlayer] = useState(false);
+  const [selfProfile, setSelfProfile] = useState<{ display_name: string; gender: 'M' | 'F' } | null>(null);
+  const [selfPosPrefs, setSelfPosPrefs] = useState<PosPrefs>({});
 
   useEffect(() => {
-    if (!visible) {
+    if (visible) {
+      supabase.auth.getUser().then(({ data: { user } }) => {
+        if (!user) return;
+        (supabase.from('profiles') as any)
+          .select('display_name, gender').eq('id', user.id).maybeSingle()
+          .then(({ data }: any) => { if (data) setSelfProfile(data); });
+      });
+    } else {
       setMode('list'); setNewName(''); setNewSport('softball');
       setInviteInput(''); setJoinError(null); setJoinFoundTeam(null);
       setJoinUnclaimed([]); setShowJoinNewPlayer(false);
+      setSelfProfile(null); setSelfPosPrefs({});
     }
   }, [visible]);
+
+  function toggleSelfPref(pos: string) {
+    setSelfPosPrefs((prev) => {
+      const cur = prev[pos] ?? null;
+      const next: 'preferred' | 'avoid' | null = !cur ? 'preferred' : cur === 'preferred' ? 'avoid' : null;
+      if (pos === 'CF') return { ...prev, LC: next, CF: next, RC: next };
+      return { ...prev, [pos]: next };
+    });
+  }
 
   async function handleSelect(teamId: string) {
     if (teamId !== team?.id) await switchTeam(teamId);
@@ -72,18 +132,20 @@ function TeamSwitcherSheet({ visible, onClose }: { visible: boolean; onClose: ()
     setMode('add-self');
   }
 
-  async function handleCreateWithSelf(name: string, gender: 'M' | 'F', posPrefs: PosPrefs) {
+  async function handleCreateWithSelf() {
     setCreating(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
+      const name = selfProfile?.display_name ?? '';
+      const gender = selfProfile?.gender ?? 'M';
       await createTeam(newName.trim(), newSport);
       const newTeam = useTeamStore.getState().team;
       if (!newTeam) throw new Error('Team creation failed');
       const { data: player } = await (supabase.from('players') as any)
         .insert({ team_id: newTeam.id, name, gender, is_active: true, user_id: user.id })
         .select('id').single();
-      const prefRows = Object.entries(posPrefs)
+      const prefRows = Object.entries(selfPosPrefs)
         .filter(([, pref]) => pref)
         .map(([position, preference]) => ({ player_id: (player as any).id, position, preference: preference! }));
       if (prefRows.length > 0) await (supabase.from('position_preferences') as any).insert(prefRows);
@@ -143,20 +205,27 @@ function TeamSwitcherSheet({ visible, onClose }: { visible: boolean; onClose: ()
     }
   }
 
-  async function handleJoinAsNew(name: string, gender: 'M' | 'F', posPrefs: PosPrefs) {
+  async function handleJoinAsNew() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user || !joinFoundTeam) return;
-    const { data: player } = await (supabase.from('players') as any)
-      .insert({ team_id: joinFoundTeam.id, name, gender, is_active: true, user_id: user.id })
-      .select('id').single();
-    const prefRows = Object.entries(posPrefs)
-      .filter(([, pref]) => pref)
-      .map(([position, preference]) => ({ player_id: (player as any).id, position, preference: preference! }));
-    if (prefRows.length > 0) await (supabase.from('position_preferences') as any).insert(prefRows);
-    await fetchTeamByOwner();
-    await switchTeam(joinFoundTeam.id);
-    onClose();
-    router.navigate('/(tabs)');
+    setJoinLoading(true);
+    try {
+      const name = selfProfile?.display_name ?? '';
+      const gender = selfProfile?.gender ?? 'M';
+      const { data: player } = await (supabase.from('players') as any)
+        .insert({ team_id: joinFoundTeam.id, name, gender, is_active: true, user_id: user.id })
+        .select('id').single();
+      const prefRows = Object.entries(selfPosPrefs)
+        .filter(([, pref]) => pref)
+        .map(([position, preference]) => ({ player_id: (player as any).id, position, preference: preference! }));
+      if (prefRows.length > 0) await (supabase.from('position_preferences') as any).insert(prefRows);
+      await fetchTeamByOwner();
+      await switchTeam(joinFoundTeam.id);
+      onClose();
+      router.navigate('/(tabs)');
+    } finally {
+      setJoinLoading(false);
+    }
   }
 
   function SheetHeader({ title, onBack }: { title: string; onBack: () => void }) {
@@ -258,16 +327,25 @@ function TeamSwitcherSheet({ visible, onClose }: { visible: boolean; onClose: ()
             {mode === 'add-self' && (
               <View style={{ paddingHorizontal: 20, paddingBottom: 36, maxHeight: windowHeight * 0.82 }}>
                 <SheetHeader title="Add Yourself" onBack={() => setMode('create')} />
-                <Text style={{ fontSize: 13, color: '#6B7280', marginBottom: 16 }}>
-                  Add yourself to <Text style={{ fontWeight: '600', color: '#111827' }}>{newName}</Text> to get started.
-                </Text>
-                <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-                  <AddPlayerForm
-                    onSubmit={handleCreateWithSelf}
-                    namePlaceholder="Your name"
-                    submitLabel="Create Team"
-                    resetOnSubmit={false}
-                  />
+                {selfProfile && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#EFF6FF', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, marginBottom: 20 }}>
+                    <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: BRAND, alignItems: 'center', justifyContent: 'center' }}>
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: 'white' }}>{getInitials(selfProfile.display_name)}</Text>
+                    </View>
+                    <Text style={{ fontSize: 14, color: '#1D4ED8' }}>
+                      Adding <Text style={{ fontWeight: '700' }}>{selfProfile.display_name}</Text> to {newName}
+                    </Text>
+                  </View>
+                )}
+                <ScrollView showsVerticalScrollIndicator={false}>
+                  <PosPrefsGrid posPrefs={selfPosPrefs} onToggle={toggleSelfPref} />
+                  <TouchableOpacity
+                    onPress={handleCreateWithSelf}
+                    disabled={creating}
+                    style={{ backgroundColor: BRAND, borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 8 }}
+                  >
+                    {creating ? <ActivityIndicator color="white" /> : <Text style={{ color: 'white', fontWeight: '700', fontSize: 16 }}>Create Team</Text>}
+                  </TouchableOpacity>
                 </ScrollView>
               </View>
             )}
@@ -323,8 +401,25 @@ function TeamSwitcherSheet({ visible, onClose }: { visible: boolean; onClose: ()
             {mode === 'join-claim' && showJoinNewPlayer && (
               <View style={{ paddingHorizontal: 20, paddingBottom: 36, maxHeight: windowHeight * 0.82 }}>
                 <SheetHeader title="Add Yourself" onBack={() => setShowJoinNewPlayer(false)} />
-                <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-                  <AddPlayerForm onSubmit={handleJoinAsNew} namePlaceholder="Your name" submitLabel="Join Team" resetOnSubmit={false} />
+                {selfProfile && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#EFF6FF', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, marginBottom: 20 }}>
+                    <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: BRAND, alignItems: 'center', justifyContent: 'center' }}>
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: 'white' }}>{getInitials(selfProfile.display_name)}</Text>
+                    </View>
+                    <Text style={{ fontSize: 14, color: '#1D4ED8' }}>
+                      Joining as <Text style={{ fontWeight: '700' }}>{selfProfile.display_name}</Text>
+                    </Text>
+                  </View>
+                )}
+                <ScrollView showsVerticalScrollIndicator={false}>
+                  <PosPrefsGrid posPrefs={selfPosPrefs} onToggle={toggleSelfPref} />
+                  <TouchableOpacity
+                    onPress={handleJoinAsNew}
+                    disabled={joinLoading}
+                    style={{ backgroundColor: BRAND, borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 8 }}
+                  >
+                    {joinLoading ? <ActivityIndicator color="white" /> : <Text style={{ color: 'white', fontWeight: '700', fontSize: 16 }}>Join Team</Text>}
+                  </TouchableOpacity>
                 </ScrollView>
               </View>
             )}

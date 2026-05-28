@@ -21,8 +21,17 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (session === undefined) return;
-    if (session) router.replace('/(tabs)');
-    else router.replace('/(auth)/login');
+    if (!session) { router.replace('/(auth)/login'); return; }
+
+    (supabase.from('profiles') as any)
+      .select('display_name')
+      .eq('id', session.user.id)
+      .maybeSingle()
+      .then(({ data, error }: any) => {
+        if (!error && data?.display_name) router.replace('/(tabs)');
+        else if (!error) router.replace('/onboarding');
+        else router.replace('/(tabs)'); // fail open on network error
+      });
   }, [session]);
 
   return <Stack screenOptions={{ headerShown: false }} />;

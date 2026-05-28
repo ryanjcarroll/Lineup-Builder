@@ -363,6 +363,98 @@ function PopupMenu({ items, anchorRef, visible, onClose, preferAbove = false }: 
   );
 }
 
+// ─── Edit Position Preferences Modal ─────────────────────────────────────────
+
+const POSITION_PREFS_ALL = ['P', 'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF'];
+
+function EditPositionPrefsModal({ visible, onClose, onSave, initialPrefs }: {
+  visible: boolean;
+  onClose: () => void;
+  onSave: (posPrefs: PosPrefs) => Promise<void>;
+  initialPrefs: PosPrefs;
+}) {
+  const [posPrefs, setPosPrefs] = useState<PosPrefs>(initialPrefs);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (visible) setPosPrefs(initialPrefs);
+  }, [visible]);
+
+  function togglePref(pos: string) {
+    setPosPrefs((prev) => {
+      const cur = prev[pos] ?? null;
+      const next: 'preferred' | 'avoid' | null = !cur ? 'preferred' : cur === 'preferred' ? 'avoid' : null;
+      if (pos === 'CF') return { ...prev, LC: next, CF: next, RC: next };
+      return { ...prev, [pos]: next };
+    });
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    try { await onSave(posPrefs); } finally { setSaving(false); }
+  }
+
+  return (
+    <Modal visible={visible} animationType="slide">
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#F9FAFB' }} edges={['top']}>
+        <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8 }}>
+          <TouchableOpacity
+            onPress={onClose}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            style={{ alignSelf: 'flex-start', marginBottom: 20 }}
+          >
+            <Ionicons name={'chevron-back' as any} size={26} color="#374151" />
+          </TouchableOpacity>
+          <Text style={{ fontSize: 24, fontWeight: '800', color: '#111827', marginBottom: 8 }}>
+            Position Preferences
+          </Text>
+          <Text style={{ fontSize: 15, color: '#6B7280', lineHeight: 22 }}>
+            Tap once for preferred · again for avoid · again to clear
+          </Text>
+        </View>
+        <ScrollView
+          contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 16, marginBottom: 32 }}>
+            {POSITION_PREFS_ALL.map((pos) => {
+              const pref = posPrefs[pos];
+              return (
+                <TouchableOpacity
+                  key={pos}
+                  onPress={() => togglePref(pos)}
+                  style={{
+                    paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20,
+                    backgroundColor: pref === 'preferred' ? '#DCFCE7' : pref === 'avoid' ? '#FEE2E2' : 'white',
+                    borderWidth: 1.5,
+                    borderColor: pref === 'preferred' ? '#16A34A' : pref === 'avoid' ? '#EF4444' : '#E5E7EB',
+                  }}
+                >
+                  <Text style={{
+                    fontSize: 14, fontWeight: '600',
+                    color: pref === 'preferred' ? '#15803D' : pref === 'avoid' ? '#DC2626' : '#9CA3AF',
+                  }}>
+                    {pos}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          <TouchableOpacity
+            onPress={handleSave}
+            disabled={saving}
+            style={{ backgroundColor: '#2563EB', borderRadius: 12, paddingVertical: 14, alignItems: 'center' }}
+          >
+            {saving
+              ? <ActivityIndicator color="white" />
+              : <Text style={{ color: 'white', fontWeight: '700', fontSize: 16 }}>Save Preferences</Text>}
+          </TouchableOpacity>
+        </ScrollView>
+      </SafeAreaView>
+    </Modal>
+  );
+}
+
 // ─── Main screen ──────────────────────────────────────────────────────────────
 
 const ACTIONS = [
@@ -484,9 +576,8 @@ export default function RosterScreen() {
 
   const myPlayer = currentUserId ? players.find((p) => p.user_id === currentUserId) ?? null : null;
 
-  async function handleEditSelf(name: string, gender: 'M' | 'F', posPrefs: PosPrefs) {
+  async function handleEditSelf(posPrefs: PosPrefs) {
     if (!myPlayer) return;
-    await (supabase.from('players') as any).update({ name, gender }).eq('id', myPlayer.id);
     await (supabase.from('position_preferences') as any).delete().eq('player_id', myPlayer.id);
     const prefRows = Object.entries(posPrefs)
       .filter(([, pref]) => pref)
@@ -1001,47 +1092,14 @@ export default function RosterScreen() {
       )}
 
       {/* ── Edit self modal ─────────────────────────────────────────────── */}
-      <Modal visible={editSelfOpen} animationType="slide">
-        <SafeAreaView style={{ flex: 1, backgroundColor: '#F9FAFB' }} edges={['top']}>
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-            <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8 }}>
-              <TouchableOpacity
-                onPress={() => setEditSelfOpen(false)}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                style={{ alignSelf: 'flex-start', marginBottom: 20 }}
-              >
-                <Ionicons name={'chevron-back' as any} size={26} color="#374151" />
-              </TouchableOpacity>
-              <Text style={{ fontSize: 24, fontWeight: '800', color: '#111827', marginBottom: 8 }}>
-                Edit Your Profile
-              </Text>
-              <Text style={{ fontSize: 15, color: '#6B7280', lineHeight: 22 }}>
-                Update your name, gender, and position preferences.
-              </Text>
-            </View>
-            <ScrollView
-              contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-            >
-              <AddPlayerForm
-                key={editSelfOpen ? 'open' : 'closed'}
-                onSubmit={handleEditSelf}
-                namePlaceholder="Your name"
-                submitLabel="Save Changes"
-                initialValues={myPlayer ? {
-                  name: myPlayer.name,
-                  gender: myPlayer.gender,
-                  posPrefs: Object.fromEntries(
-                    (myPlayer.position_preferences ?? []).map((p) => [p.position, p.preference])
-                  ) as PosPrefs,
-                } : undefined}
-                resetOnSubmit={false}
-              />
-            </ScrollView>
-          </KeyboardAvoidingView>
-        </SafeAreaView>
-      </Modal>
+      <EditPositionPrefsModal
+        visible={editSelfOpen}
+        onClose={() => setEditSelfOpen(false)}
+        onSave={handleEditSelf}
+        initialPrefs={Object.fromEntries(
+          (myPlayer?.position_preferences ?? []).map((p) => [p.position, p.preference])
+        ) as PosPrefs}
+      />
 
       {/* FAB */}
       {!selectionMode && (

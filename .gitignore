@@ -26,6 +26,7 @@ expo-env.d.ts
 # ─── Supabase ────────────────────────────────────────────────────────────────
 # Local Supabase dev container data & config
 .supabase/
+supabase/*
 supabase/.temp/
 
 # ─── Native Signing & Certificates ──────────────────────────────────────────

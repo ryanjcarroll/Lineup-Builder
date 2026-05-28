@@ -1,6 +1,6 @@
 import { View, Text, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Player } from '../types/database';
+import { Player, playerName, playerGender } from '../types/database';
 import GenderCorner from './GenderCorner';
 
 interface Props {
@@ -50,13 +50,15 @@ export default function PlayerCard({ player, onEdit, isCaptain, isMe, isSelected
   const preferred = prefs.filter((p) => p.preference === 'preferred').map((p) => p.position).sort(sortByOrder);
   const avoid = prefs.filter((p) => p.preference === 'avoid').map((p) => p.position).sort(sortByOrder);
   const isUnlinked = !player.user_id;
-  const { bg, text } = getAvatarColor(player.name);
+  const displayName = playerName(player);
+  const displayGender = playerGender(player);
+  const { bg, text } = getAvatarColor(displayName);
 
   return (
     // Outer View carries shadow; inner View clips triangle to border radius
     <View className="bg-white rounded-xl mx-4 mb-3 shadow-sm" style={{ borderWidth: isSelected ? 2 : 1, borderColor: isSelected ? '#2563EB' : '#F3F4F6' }}>
       <View style={{ borderRadius: isSelected ? 11 : 12, overflow: 'hidden', backgroundColor: isSelected ? '#EFF6FF' : 'white' }}>
-        <GenderCorner gender={player.gender} size={21} />
+        <GenderCorner gender={displayGender} size={21} />
         <View className="flex-row items-start px-4 pt-4 pb-3">
           <View style={{
             width: 44, height: 44, borderRadius: 22,
@@ -69,14 +71,14 @@ export default function PlayerCard({ player, onEdit, isCaptain, isMe, isSelected
               <Ionicons name={'checkmark' as any} size={22} color="white" />
             ) : (
               <Text style={{ fontSize: 16, fontWeight: '700', color: isUnlinked ? '#9CA3AF' : text }}>
-                {getInitials(player.name)}
+                {getInitials(displayName)}
               </Text>
             )}
           </View>
 
           <View className="flex-1">
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <Text className="text-gray-900 font-bold text-base" style={{ flex: 1 }}>{player.name}</Text>
+              <Text className="text-gray-900 font-bold text-base" style={{ flex: 1 }}>{displayName}</Text>
               {isCaptain && (
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: '#DBEAFE', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 12 }}>
                   <Ionicons name={'shield-checkmark' as any} size={11} color="#1D4ED8" />

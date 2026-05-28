@@ -12,7 +12,7 @@ import { useTeamStore } from '../../../stores/teamStore';
 import { useGameStore } from '../../../stores/gameStore';
 import { DEFAULT_RULES } from '../../../components/EditRulesModal';
 import { supabase } from '../../../lib/supabase';
-import { Player } from '../../../types/database';
+import { Player, playerName, playerGender } from '../../../types/database';
 
 
 // ─── Validation ───────────────────────────────────────────────────────────────
@@ -31,9 +31,9 @@ function validateOrder(slots: Player[], maxConsecMen: number): ValidationResult 
   ];
   let i = 0;
   while (i < slots.length) {
-    if (doubled[i].player.gender !== 'M') { i++; continue; }
+    if (playerGender(doubled[i].player) !== 'M') { i++; continue; }
     let runEnd = i;
-    while (runEnd < doubled.length && doubled[runEnd].player.gender === 'M') runEnd++;
+    while (runEnd < doubled.length && playerGender(doubled[runEnd].player) === 'M') runEnd++;
     const runLen = runEnd - i;
     if (runLen > maxConsecMen) {
       const indices = [...new Set(doubled.slice(i, runEnd).map((s) => s.index))];
@@ -53,7 +53,7 @@ function buildWarnings(result: ValidationResult, slots: Player[], minBatters: nu
     warnings.push(`Only ${slots.length} player${slots.length !== 1 ? 's' : ''} in roster (minimum is ${minBatters})`);
   }
   result.consecutiveMaleViolations.forEach((indices) => {
-    const names = indices.map((i) => slots[i]?.name.split(' ')[0]).filter(Boolean).join(', ');
+    const names = indices.map((i) => slots[i] ? playerName(slots[i]!).split(' ')[0] : undefined).filter(Boolean).join(', ');
     warnings.push(`${indices.length} consecutive male batters (slots ${indices.map((i) => i + 1).join('→')}): ${names}`);
   });
   return warnings;
@@ -405,7 +405,7 @@ export default function BattingOrderScreen() {
                   ...(isSwapTarget ? { borderStyle: 'dashed' } : {}),
                 }}
               >
-                <GenderCorner gender={player.gender} />
+                <GenderCorner gender={playerGender(player)} />
                 <View style={{
                   width: 32, height: 32, borderRadius: 16,
                   backgroundColor: isSelected ? '#2563EB' : isGhost ? '#EDE9FE' : isViolating ? '#FEF08A' : '#F3F4F6',
@@ -424,7 +424,7 @@ export default function BattingOrderScreen() {
                     fontWeight: '600', fontSize: 16,
                     color: isSelected ? '#1D4ED8' : isGhost ? '#6D28D9' : isViolating ? '#854D0E' : '#111827',
                   }} numberOfLines={1}>
-                    {player.name}
+                    {playerName(player)}
                   </Text>
                   {isSub && (
                     <View style={{ backgroundColor: '#EDE9FE', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1 }}>

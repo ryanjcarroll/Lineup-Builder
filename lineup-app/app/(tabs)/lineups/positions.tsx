@@ -18,7 +18,7 @@ import { DEFAULT_STRATEGIES } from '../../../components/EditStrategiesModal';
 import { useTeamStore } from '../../../stores/teamStore';
 import { useGameStore } from '../../../stores/gameStore';
 import { supabase } from '../../../lib/supabase';
-import { Player } from '../../../types/database';
+import { Player, playerName, playerGender } from '../../../types/database';
 
 const INNINGS_COUNT = 6;
 const BUTTON_W  = 70;
@@ -119,10 +119,11 @@ function cellColors(pref: string | undefined | null): { text: string; bg: string
 // ─── Display name: adds last initial when first name is shared on the roster ──
 
 function displayName(player: Player, roster: Player[]): string {
-  const first = player.name.split(' ')[0];
-  const hasDupe = roster.some((p) => p.id !== player.id && p.name.split(' ')[0] === first);
+  const name = playerName(player);
+  const first = name.split(' ')[0];
+  const hasDupe = roster.some((p) => p.id !== player.id && playerName(p).split(' ')[0] === first);
   if (!hasDupe) return first;
-  const parts = player.name.trim().split(' ');
+  const parts = name.trim().split(' ');
   const lastInitial = parts.length > 1 ? ` ${parts[parts.length - 1][0].toUpperCase()}` : '';
   return `${first}${lastInitial}`;
 }
@@ -266,7 +267,7 @@ export default function PositionsScreen() {
   }
 
   const maxField = team?.rules?.players_in_field ?? DEFAULT_RULES.players_in_field;
-  const womenInRoster = rosterPlayers.filter(p => p.gender === 'F').length;
+  const womenInRoster = rosterPlayers.filter(p => playerGender(p) === 'F').length;
   const fieldersAllowed = Math.min(maxField, womenInRoster + maxMenField, rosterPlayers.length);
   const teamStrategies = team?.rules?.strategies as Record<number, string[]> | undefined;
   const activePositionKeys = teamStrategies?.[fieldersAllowed] ?? DEFAULT_STRATEGIES[fieldersAllowed] ?? teamStrategies?.[maxField] ?? DEFAULT_STRATEGIES[maxField] ?? FIELD_POSITIONS.map(p => p.key);
@@ -307,7 +308,7 @@ export default function PositionsScreen() {
     if (!isInningFull(inning)) return [];
     const placed = Object.values(inningAssignments[inning]).filter(Boolean) as Player[];
     const warnings: string[] = [];
-    if (placed.filter(p => p.gender === 'M').length > maxMenField) {
+    if (placed.filter(p => playerGender(p) === 'M').length > maxMenField) {
       warnings.push(`Too many men in field (max: ${maxMenField})`);
     }
     return warnings;
@@ -319,7 +320,7 @@ export default function PositionsScreen() {
     const placedEntries = Object.entries(inn).filter(([pos, p]) => p !== null && activePositionKeys.includes(pos));
     if (placedEntries.length === 0) return 'default';
     const placed = placedEntries.map(([, p]) => p!) as Player[];
-    if (placed.filter(p => p.gender === 'M').length > maxMenField) return 'invalid';
+    if (placed.filter(p => playerGender(p) === 'M').length > maxMenField) return 'invalid';
     const hasAvoid = placedEntries.some(([pos, p]) =>
       p!.position_preferences?.find(pp => pp.position === pos)?.preference === 'avoid'
     );
@@ -519,7 +520,7 @@ export default function PositionsScreen() {
                   borderColor:     posBorderColor(isSelected, !!player, isTarget, aPref, isGrayed, gPref),
                 }}
               >
-                {player && <GenderCorner gender={player.gender} size={12} />}
+                {player && <GenderCorner gender={playerGender(player)} size={12} />}
                 <Text style={{ fontSize: 10, fontWeight: '600', color: posLabelColor(isSelected, !!player, isTarget, aPref, isGrayed, gPref) }}>
                   {key}
                 </Text>
@@ -602,7 +603,7 @@ export default function PositionsScreen() {
                 className={`flex-row items-center ${!isLast ? 'border-b border-gray-50' : ''}`}
               >
                 <View style={{ width: NAME_COL_W, overflow: 'hidden' }} className="flex-row items-center gap-1 px-3 py-2.5">
-                  <GenderCorner gender={player.gender} size={12} />
+                  <GenderCorner gender={playerGender(player)} size={12} />
                   <Text className="text-sm font-medium text-gray-900 flex-shrink" numberOfLines={1}>
                     {displayName(player, rosterPlayers)}
                   </Text>
