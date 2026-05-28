@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, ActivityIndicator,
-  Modal, TextInput, KeyboardAvoidingView, Platform, Alert, Image,
+  Modal, TextInput, KeyboardAvoidingView, Platform, Alert, Image, Dimensions,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as Clipboard from 'expo-clipboard';
@@ -64,12 +64,13 @@ function getInitials(name: string): string {
 
 // ─── Edit Team Info ───────────────────────────────────────────────────────────
 
-function EditTeamModal({ visible, onClose, onSaved }: {
+function EditTeamModal({ visible, onClose, onSaved, isCaptain }: {
   visible: boolean;
   onClose: () => void;
   onSaved: () => void;
+  isCaptain: boolean;
 }) {
-  const { team, deleteTeam } = useTeamStore();
+  const { team, players, deleteTeam, fetchTeamByOwner } = useTeamStore();
   const [name, setName] = useState(team?.name ?? '');
   const [photoUrl, setPhotoUrl] = useState<string | null>(team?.photo_url ?? null);
   const [uploading, setUploading] = useState(false);
@@ -93,6 +94,29 @@ function EditTeamModal({ visible, onClose, onSaved }: {
           text: 'Delete', style: 'destructive', onPress: async () => {
             onClose();
             await deleteTeam(team!.id);
+          },
+        },
+      ]
+    );
+  }
+
+  function handleLeave() {
+    Alert.alert(
+      'Leave Team',
+      `Leave "${team?.name}"? You'll be removed from the roster.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Leave', style: 'destructive', onPress: async () => {
+            onClose();
+            const { data: { session } } = await supabase.auth.getSession();
+            const uid = session?.user?.id;
+            if (!uid) return;
+            const myPlayer = players.find((p) => p.user_id === uid);
+            if (myPlayer) {
+              await (supabase.from('players') as any).update({ is_active: false }).eq('id', myPlayer.id);
+            }
+            await fetchTeamByOwner();
           },
         },
       ]
@@ -252,8 +276,10 @@ function EditTeamModal({ visible, onClose, onSaved }: {
               </TouchableOpacity>
 
               <View style={{ marginTop: 28, borderTopWidth: 1, borderTopColor: '#E5E7EB', paddingTop: 16 }}>
-                <TouchableOpacity onPress={handleDelete} style={{ alignItems: 'center', paddingVertical: 8 }}>
-                  <Text style={{ fontSize: 14, fontWeight: '500', color: '#DC2626' }}>Delete Team</Text>
+                <TouchableOpacity onPress={isCaptain ? handleDelete : handleLeave} style={{ alignItems: 'center', paddingVertical: 8 }}>
+                  <Text style={{ fontSize: 14, fontWeight: '500', color: '#DC2626' }}>
+                    {isCaptain ? 'Delete Team' : 'Leave Team'}
+                  </Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -265,6 +291,76 @@ function EditTeamModal({ visible, onClose, onSaved }: {
 }
 
 
+// ─── Popup Menu ───────────────────────────────────────────────────────────────
+
+interface PopupMenuItem { label: string; onPress: () => void }
+
+function PopupMenu({ items, anchorRef, visible, onClose }: {
+  items: PopupMenuItem[];
+  anchorRef: React.RefObject<any>;
+  visible: boolean;
+  onClose: () => void;
+}) {
+  const [pos, setPos] = useState<{ top: number; right: number } | null>(null);
+  const insets = useSafeAreaInsets();
+
+  useEffect(() => {
+    if (visible) {
+      anchorRef.current?.measure((_x: number, _y: number, width: number, height: number, pageX: number, pageY: number) => {
+        const screenHeight = Dimensions.get('window').height;
+        const estimatedMenuHeight = items.length * 46;
+        // pageY is from the top of the full screen; Modal coordinate space starts
+        // below the status bar/notch, so subtract the top inset to align correctly.
+        const adjustedY = pageY - insets.top;
+        const showAbove = adjustedY + height + estimatedMenuHeight > screenHeight - 80;
+        setPos({
+          top: showAbove ? adjustedY - estimatedMenuHeight - 4 : adjustedY + height + 4,
+          right: Dimensions.get('window').width - pageX - width,
+        });
+      });
+    } else {
+      setPos(null);
+    }
+  }, [visible]);
+
+  if (!visible) return null;
+
+  return (
+    <Modal transparent animationType="none" onRequestClose={onClose}>
+      <View style={{ flex: 1 }}>
+        <TouchableOpacity
+          style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+          activeOpacity={1}
+          onPress={onClose}
+        />
+        {pos && (
+          <View style={{
+            position: 'absolute', ...pos,
+            backgroundColor: 'white', borderRadius: 8, minWidth: 168,
+            shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.15, shadowRadius: 8, elevation: 8,
+            overflow: 'hidden',
+          }}>
+            {items.map((item, index) => (
+              <TouchableOpacity
+                key={item.label}
+                onPress={() => { onClose(); item.onPress(); }}
+                style={{
+                  paddingHorizontal: 16, paddingVertical: 13,
+                  borderTopWidth: index > 0 ? 1 : 0,
+                  borderTopColor: '#F3F4F6',
+                }}
+              >
+                <Text style={{ fontSize: 15, color: '#111827' }}>{item.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+      </View>
+    </Modal>
+  );
+}
+
 // ─── Main screen ──────────────────────────────────────────────────────────────
 
 const ACTIONS = [
@@ -275,6 +371,10 @@ const ACTIONS = [
 
 export default function RosterScreen() {
   const { team, players, loading, error, fetchTeam, fetchTeamByOwner, createTeam, ensureInviteCode } = useTeamStore();
+  const kebabRef = useRef<any>(null);
+  const fabRef = useRef<any>(null);
+  const [kebabMenuOpen, setKebabMenuOpen] = useState(false);
+  const [fabMenuOpen, setFabMenuOpen] = useState(false);
   const [editTeamOpen, setEditTeamOpen] = useState(false);
   const [editRulesOpen, setEditRulesOpen] = useState(false);
   const [selectionMode, setSelectionMode] = useState(false);
@@ -429,6 +529,13 @@ export default function RosterScreen() {
       const { data: teamData, error } = await (supabase.from('teams') as any)
         .select('*').eq('invite_code', code).single();
       if (error || !teamData) { setJoinError('No team found with that code.'); return; }
+
+      if (currentUserId) {
+        const { data: existing } = await (supabase.from('players') as any)
+          .select('id').eq('team_id', teamData.id).eq('user_id', currentUserId)
+          .eq('is_active', true).maybeSingle();
+        if (existing) { setJoinError("You're already on that team."); return; }
+      }
 
       const { data: players } = await (supabase.from('players') as any)
         .select('*')
@@ -725,13 +832,11 @@ export default function RosterScreen() {
               )
             ) : (
               <TouchableOpacity
-                onPress={() => Alert.alert('Manage Roster', undefined, [
-                  { text: 'Remove Players', onPress: () => setSelectionMode(true) },
-                  { text: 'Cancel', style: 'cancel' },
-                ])}
+                ref={kebabRef}
+                onPress={() => setKebabMenuOpen(true)}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
-                <Ionicons name={'ellipsis-horizontal' as any} size={22} color="#374151" />
+                <Ionicons name={'ellipsis-vertical' as any} size={22} color="#374151" />
               </TouchableOpacity>
             )}
           </View>
@@ -911,11 +1016,8 @@ export default function RosterScreen() {
       {/* FAB */}
       {!selectionMode && (
         <TouchableOpacity
-          onPress={() => Alert.alert('Add to Roster', undefined, [
-            { text: 'Add Player', onPress: () => setAddPlayerOpen(true) },
-            { text: 'Copy Invite Code', onPress: handleCopyCode },
-            { text: 'Cancel', style: 'cancel' },
-          ])}
+          ref={fabRef}
+          onPress={() => setFabMenuOpen(true)}
           style={{
             position: 'absolute', bottom: 32, right: 20,
             width: 56, height: 56, borderRadius: 28,
@@ -949,6 +1051,7 @@ export default function RosterScreen() {
         visible={editTeamOpen}
         onClose={() => setEditTeamOpen(false)}
         onSaved={() => fetchTeam(team.id)}
+        isCaptain={!!currentUserId && team.owner_id === currentUserId}
       />
       <EditRulesModal
         visible={editRulesOpen}
@@ -957,6 +1060,22 @@ export default function RosterScreen() {
       <EditStrategiesModal
         visible={editStrategiesOpen}
         onClose={() => setEditStrategiesOpen(false)}
+      />
+
+      <PopupMenu
+        anchorRef={kebabRef}
+        visible={kebabMenuOpen}
+        onClose={() => setKebabMenuOpen(false)}
+        items={[{ label: 'Remove Players', onPress: () => setSelectionMode(true) }]}
+      />
+      <PopupMenu
+        anchorRef={fabRef}
+        visible={fabMenuOpen}
+        onClose={() => setFabMenuOpen(false)}
+        items={[
+          { label: 'Add Player', onPress: () => setAddPlayerOpen(true) },
+          { label: 'Copy Invite Code', onPress: handleCopyCode },
+        ]}
       />
     </SafeAreaView>
   );

@@ -78,9 +78,9 @@ export const useTeamStore = create<TeamStore>((set, get) => ({
       const ownedTeams: Team[] = ownedResult.data ?? [];
       const ownedIds = new Set(ownedTeams.map((t) => t.id));
 
-      // Teams I've joined as a player (have a player record with my user_id but don't own)
+      // Teams I've joined as a player (have an active player record with my user_id but don't own)
       const playerResult = await (supabase.from('players') as any)
-        .select('team_id').eq('user_id', user.id);
+        .select('team_id').eq('user_id', user.id).eq('is_active', true);
       const joinedIds = (playerResult.error || !playerResult.data)
         ? []
         : (playerResult.data as any[])

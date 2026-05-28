@@ -34,7 +34,7 @@ export default function ProfileScreen() {
     : '?';
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#F3F4F6' }} edges={['bottom']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#F3F4F6' }} edges={[]}>
       <Stack.Screen options={{ title: 'Profile' }} />
       <View style={{ flex: 1, paddingHorizontal: 20 }}>
 

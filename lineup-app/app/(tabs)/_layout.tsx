@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, Modal, TextInput,
   KeyboardAvoidingView, Platform, ActivityIndicator, Alert, ScrollView, Image,
+  useWindowDimensions,
 } from 'react-native';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -39,6 +40,8 @@ function getInitials(name: string): string {
 
 function TeamSwitcherSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const { team, teams, switchTeam, createTeam, fetchTeamByOwner } = useTeamStore();
+  const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
   type SheetMode = 'list' | 'fork' | 'create' | 'join-code' | 'join-claim';
   const [mode, setMode] = useState<SheetMode>('list');
   const [newName, setNewName] = useState('');
@@ -85,6 +88,14 @@ function TeamSwitcherSheet({ visible, onClose }: { visible: boolean; onClose: ()
       const { data: teamData, error } = await (supabase.from('teams') as any)
         .select('*').eq('invite_code', code).single();
       if (error || !teamData) { setJoinError('No team found with that code.'); return; }
+      const { data: { session } } = await supabase.auth.getSession();
+      const uid = session?.user?.id;
+      if (uid) {
+        const { data: existing } = await (supabase.from('players') as any)
+          .select('id').eq('team_id', teamData.id).eq('user_id', uid)
+          .eq('is_active', true).maybeSingle();
+        if (existing) { setJoinError("You're already on that team."); return; }
+      }
       const { data: players } = await (supabase.from('players') as any)
         .select('*').eq('team_id', teamData.id).eq('is_active', true)
         .eq('is_ghost', false).is('user_id', null).order('name');
@@ -145,7 +156,7 @@ function TeamSwitcherSheet({ visible, onClose }: { visible: boolean; onClose: ()
       <View style={{ flex: 1, justifyContent: 'flex-end' }}>
         <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={onClose} />
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <View style={{ backgroundColor: '#F3F4F6', borderTopLeftRadius: 20, borderTopRightRadius: 20 }}>
+          <View style={{ backgroundColor: '#F3F4F6', borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingBottom: insets.bottom }}>
             <View style={{ width: 40, height: 4, backgroundColor: '#E5E7EB', borderRadius: 2, alignSelf: 'center', marginTop: 12, marginBottom: 8 }} />
 
             {/* List */}
@@ -271,7 +282,7 @@ function TeamSwitcherSheet({ visible, onClose }: { visible: boolean; onClose: ()
 
             {/* Join: new player form */}
             {mode === 'join-claim' && showJoinNewPlayer && (
-              <View style={{ paddingHorizontal: 20, paddingBottom: 36, maxHeight: '90%' }}>
+              <View style={{ paddingHorizontal: 20, paddingBottom: 36, maxHeight: windowHeight * 0.82 }}>
                 <SheetHeader title="Add Yourself" onBack={() => setShowJoinNewPlayer(false)} />
                 <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
                   <AddPlayerForm onSubmit={handleJoinAsNew} namePlaceholder="Your name" submitLabel="Join Team" resetOnSubmit={false} />

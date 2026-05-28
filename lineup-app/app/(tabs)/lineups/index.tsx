@@ -159,7 +159,7 @@ export default function LineupsScreen() {
   const selectedStatuses = selectedGame ? gameStatuses[selectedGame.id] : undefined;
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#F9FAFB' }} edges={['bottom']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#F9FAFB' }} edges={[]}>
       <Stack.Screen options={{ title: 'Lineups' }} />
 
       {/* Game selector */}

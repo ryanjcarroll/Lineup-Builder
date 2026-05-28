@@ -159,7 +159,7 @@ export default function ScheduleScreen() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#F9FAFB' }} edges={['bottom']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#F9FAFB' }} edges={[]}>
       <Stack.Screen options={{ title: 'Schedule' }} />
       <View style={{ flex: 1 }}>
         {loading ? (
