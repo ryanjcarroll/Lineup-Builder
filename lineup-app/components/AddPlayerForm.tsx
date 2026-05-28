@@ -4,7 +4,7 @@ import {
 } from 'react-native';
 
 // CF represents the outfield-center group: tapping it sets LC, CF, and RC together
-const FIELD_POSITIONS_ALL = ['LF', 'CF', 'RF', 'SS', '2B', '3B', '1B', 'P', 'C'];
+const FIELD_POSITIONS_ALL = ['P', 'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF'];
 const CF_GROUP = ['LC', 'CF', 'RC'] as const;
 
 export type PosPrefs = Record<string, 'preferred' | 'avoid' | null>;
@@ -13,12 +13,14 @@ interface Props {
   onSubmit: (name: string, gender: 'M' | 'F', posPrefs: PosPrefs) => Promise<void>;
   namePlaceholder?: string;
   submitLabel?: string;
+  initialValues?: { name?: string; gender?: 'M' | 'F'; posPrefs?: PosPrefs };
+  resetOnSubmit?: boolean;
 }
 
-export default function AddPlayerForm({ onSubmit, namePlaceholder = 'Player name', submitLabel = 'Add Player' }: Props) {
-  const [name, setName] = useState('');
-  const [gender, setGender] = useState<'M' | 'F'>('M');
-  const [posPrefs, setPosPrefs] = useState<PosPrefs>({});
+export default function AddPlayerForm({ onSubmit, namePlaceholder = 'Player name', submitLabel = 'Add Player', initialValues, resetOnSubmit = true }: Props) {
+  const [name, setName] = useState(initialValues?.name ?? '');
+  const [gender, setGender] = useState<'M' | 'F'>(initialValues?.gender ?? 'M');
+  const [posPrefs, setPosPrefs] = useState<PosPrefs>(initialValues?.posPrefs ?? {});
   const [saving, setSaving] = useState(false);
 
   function togglePref(pos: string) {
@@ -37,9 +39,11 @@ export default function AddPlayerForm({ onSubmit, namePlaceholder = 'Player name
     setSaving(true);
     try {
       await onSubmit(name.trim(), gender, posPrefs);
-      setName('');
-      setGender('M');
-      setPosPrefs({});
+      if (resetOnSubmit) {
+        setName('');
+        setGender('M');
+        setPosPrefs({});
+      }
     } finally {
       setSaving(false);
     }

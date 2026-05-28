@@ -18,6 +18,8 @@ export interface Team {
   sport: Sport;
   rules: TeamRules;
   photo_url: string | null;
+  owner_id: string | null;
+  invite_code: string | null;
   created_at: string;
 }
 
@@ -28,6 +30,7 @@ export interface Player {
   gender: Gender;
   is_active: boolean;
   is_ghost: boolean;
+  user_id: string | null;
   created_at: string;
   position_preferences?: PositionPreference[];
 }

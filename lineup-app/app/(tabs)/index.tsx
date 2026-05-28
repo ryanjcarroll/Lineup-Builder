@@ -6,14 +6,14 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as Clipboard from 'expo-clipboard';
 import PlayerCard from '../../components/PlayerCard';
 import EditRulesModal from '../../components/EditRulesModal';
 import EditStrategiesModal from '../../components/EditStrategiesModal';
 import AddPlayerForm, { PosPrefs } from '../../components/AddPlayerForm';
 import { useTeamStore } from '../../stores/teamStore';
 import { supabase } from '../../lib/supabase';
-
-const TEAM_ID = '00000000-0000-0000-0000-000000000001';
+import { Sport, Team, Player } from '../../types/database';
 
 // One-time migration: ensure any player with LC or RC also has all three (LC, CF, RC)
 // with the same preference, since CF is now the canonical "center outfield" group selector.
@@ -69,11 +69,35 @@ function EditTeamModal({ visible, onClose, onSaved }: {
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const { team } = useTeamStore();
+  const { team, deleteTeam } = useTeamStore();
   const [name, setName] = useState(team?.name ?? '');
   const [photoUrl, setPhotoUrl] = useState<string | null>(team?.photo_url ?? null);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [codeCopied, setCodeCopied] = useState(false);
+
+  async function handleCopyCode() {
+    if (!team?.invite_code) return;
+    await Clipboard.setStringAsync(team.invite_code);
+    setCodeCopied(true);
+    setTimeout(() => setCodeCopied(false), 2000);
+  }
+
+  function handleDelete() {
+    Alert.alert(
+      'Delete Team',
+      `Permanently delete "${team?.name}" and all its players, games, and lineups? This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete', style: 'destructive', onPress: async () => {
+            onClose();
+            await deleteTeam(team!.id);
+          },
+        },
+      ]
+    );
+  }
 
   useEffect(() => {
     if (visible) {
@@ -106,7 +130,7 @@ function EditTeamModal({ visible, onClose, onSaved }: {
       const dataUrl = `data:${mime};base64,${base64}`;
       const { error } = await (supabase.from('teams') as any)
         .update({ photo_url: dataUrl })
-        .eq('id', TEAM_ID);
+        .eq('id', team!.id);
       if (error) throw error;
       setPhotoUrl(dataUrl);
     } catch (e) {
@@ -123,7 +147,7 @@ function EditTeamModal({ visible, onClose, onSaved }: {
     try {
       await (supabase.from('teams') as any)
         .update({ name: name.trim() })
-        .eq('id', TEAM_ID);
+        .eq('id', team!.id);
       onSaved();
       onClose();
     } finally {
@@ -192,6 +216,27 @@ function EditTeamModal({ visible, onClose, onSaved }: {
                 onSubmitEditing={handleSave}
               />
 
+              {team?.invite_code && (
+                <>
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: '#374151', marginBottom: 6 }}>Invite Code</Text>
+                  <TouchableOpacity
+                    onPress={handleCopyCode}
+                    activeOpacity={0.7}
+                    style={{
+                      flexDirection: 'row', alignItems: 'center',
+                      backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#E5E7EB',
+                      borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12,
+                      marginBottom: 20,
+                    }}
+                  >
+                    <Text style={{ flex: 1, fontSize: 16, fontWeight: '700', letterSpacing: 3, color: codeCopied ? '#16A34A' : '#374151' }}>
+                      {team.invite_code}
+                    </Text>
+                    <Ionicons name={(codeCopied ? 'checkmark-circle' : 'copy-outline') as any} size={18} color={codeCopied ? '#16A34A' : '#6B7280'} />
+                  </TouchableOpacity>
+                </>
+              )}
+
               <TouchableOpacity
                 onPress={handleSave}
                 disabled={saving || uploading || !name.trim()}
@@ -205,6 +250,12 @@ function EditTeamModal({ visible, onClose, onSaved }: {
                   ? <ActivityIndicator color="white" />
                   : <Text style={{ color: 'white', fontWeight: '700', fontSize: 16 }}>Save</Text>}
               </TouchableOpacity>
+
+              <View style={{ marginTop: 28, borderTopWidth: 1, borderTopColor: '#E5E7EB', paddingTop: 16 }}>
+                <TouchableOpacity onPress={handleDelete} style={{ alignItems: 'center', paddingVertical: 8 }}>
+                  <Text style={{ fontSize: 14, fontWeight: '500', color: '#DC2626' }}>Delete Team</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
         </View>
@@ -213,20 +264,126 @@ function EditTeamModal({ visible, onClose, onSaved }: {
   );
 }
 
-// ─── Edit Roster ──────────────────────────────────────────────────────────────
 
-function EditRosterModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
-  const { players, fetchTeam } = useTeamStore();
-  const [addOpen, setAddOpen] = useState(false);
+// ─── Main screen ──────────────────────────────────────────────────────────────
+
+const ACTIONS = [
+  { icon: 'document-text-outline', label: 'Rules'       },
+  { icon: 'map-outline',           label: 'Strategies'  },
+  { icon: 'create-outline',        label: 'Team Info'   },
+] as const;
+
+export default function RosterScreen() {
+  const { team, players, loading, error, fetchTeam, fetchTeamByOwner, createTeam, ensureInviteCode } = useTeamStore();
+  const [editTeamOpen, setEditTeamOpen] = useState(false);
+  const [editRulesOpen, setEditRulesOpen] = useState(false);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [addPlayerOpen, setAddPlayerOpen] = useState(false);
+  const [editStrategiesOpen, setEditStrategiesOpen] = useState(false);
+
+  // Create team form state
+  const [createName, setCreateName] = useState('');
+  const [createSport, setCreateSport] = useState<Sport>('softball');
+  const [creating, setCreating] = useState(false);
+  const [showAddSelf, setShowAddSelf] = useState(false);
+  const [editSelfOpen, setEditSelfOpen] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [codeCopied, setCodeCopied] = useState(false);
+
+  // Join flow
+  type OnboardingView = 'fork' | 'create' | 'join-code' | 'join-claim';
+  const [onboardingView, setOnboardingView] = useState<OnboardingView>('fork');
+  const [inviteInput, setInviteInput] = useState('');
+  const [joinLoading, setJoinLoading] = useState(false);
+  const [joinError, setJoinError] = useState<string | null>(null);
+  const [joinFoundTeam, setJoinFoundTeam] = useState<Team | null>(null);
+  const [joinUnclaimed, setJoinUnclaimed] = useState<Player[]>([]);
+  const [showJoinNewPlayer, setShowJoinNewPlayer] = useState(false);
 
   useEffect(() => {
-    if (!visible) setAddOpen(false);
-  }, [visible]);
+    fetchTeamByOwner();
+    supabase.auth.getUser().then(({ data: { user } }) => setCurrentUserId(user?.id ?? null));
+    migrateOutfieldPreferences().then(() => {
+      // Re-fetch after migration only if a team exists
+      useTeamStore.getState().team?.id &&
+        fetchTeam(useTeamStore.getState().team!.id);
+    });
+  }, []);
 
-  async function handleAdd(name: string, gender: 'M' | 'F', posPrefs: PosPrefs) {
+  useEffect(() => {
+    if (team && !team.invite_code) ensureInviteCode(team.id);
+  }, [team?.id, team?.invite_code]);
+
+  async function handleCopyCode() {
+    if (!team?.invite_code) return;
+    await Clipboard.setStringAsync(team.invite_code);
+    setCodeCopied(true);
+    setTimeout(() => setCodeCopied(false), 2000);
+  }
+
+  const maleCount   = players.filter((p) => p.gender === 'M').length;
+  const femaleCount = players.filter((p) => p.gender === 'F').length;
+  const avatarColor = team ? getAvatarColor(team.name) : '#3B82F6';
+
+  function handleAction(label: string) {
+    if (label === 'Rules') setEditRulesOpen(true);
+    else if (label === 'Strategies') setEditStrategiesOpen(true);
+    else if (label === 'Team Info') setEditTeamOpen(true);
+  }
+
+  async function handleCreateTeam() {
+    if (!createName.trim()) return;
+    setCreating(true);
+    try {
+      await createTeam(createName.trim(), createSport);
+      setShowAddSelf(true);
+    } catch {
+      Alert.alert('Error', 'Could not create team. Please try again.');
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  async function handleAddSelf(name: string, gender: 'M' | 'F', posPrefs: PosPrefs) {
     const { data: player, error } = await supabase
       .from('players')
-      .insert({ team_id: TEAM_ID, name, gender, is_active: true } as any)
+      .insert({ team_id: team!.id, name, gender, is_active: true, user_id: currentUserId } as any)
+      .select('id')
+      .single();
+    if (error || !player) throw error ?? new Error('Failed to add player');
+
+    const prefRows = Object.entries(posPrefs)
+      .filter(([, pref]) => pref)
+      .map(([position, preference]) => ({ player_id: (player as any).id, position, preference: preference! }));
+    if (prefRows.length > 0) {
+      await supabase.from('position_preferences').insert(prefRows as any);
+    }
+
+    await fetchTeam(team!.id);
+    setShowAddSelf(false);
+  }
+
+  const myPlayer = currentUserId ? players.find((p) => p.user_id === currentUserId) ?? null : null;
+
+  async function handleEditSelf(name: string, gender: 'M' | 'F', posPrefs: PosPrefs) {
+    if (!myPlayer) return;
+    await (supabase.from('players') as any).update({ name, gender }).eq('id', myPlayer.id);
+    await (supabase.from('position_preferences') as any).delete().eq('player_id', myPlayer.id);
+    const prefRows = Object.entries(posPrefs)
+      .filter(([, pref]) => pref)
+      .map(([position, preference]) => ({ player_id: myPlayer.id, position, preference: preference! }));
+    if (prefRows.length > 0) {
+      await (supabase.from('position_preferences') as any).insert(prefRows);
+    }
+    await fetchTeam(team!.id);
+    setEditSelfOpen(false);
+  }
+
+  async function handleAddPlayer(name: string, gender: 'M' | 'F', posPrefs: PosPrefs) {
+    const { data: player, error } = await supabase
+      .from('players')
+      .insert({ team_id: team!.id, name, gender, is_active: true } as any)
       .select('id')
       .single();
     if (error || !player) return;
@@ -238,173 +395,392 @@ function EditRosterModal({ visible, onClose }: { visible: boolean; onClose: () =
       await supabase.from('position_preferences').insert(prefRows as any);
     }
 
-    await fetchTeam(TEAM_ID);
-    setAddOpen(false);
+    await fetchTeam(team!.id);
+    setAddPlayerOpen(false);
   }
 
-  function handleRemove(playerId: string, playerName: string) {
+  function handleDeleteSelected() {
+    const ids = Array.from(selectedIds);
     Alert.alert(
-      'Remove Player',
-      `Remove ${playerName} from the roster?`,
+      'Remove Players',
+      `Remove ${ids.length} player${ids.length > 1 ? 's' : ''} from the roster?`,
       [
-        { text: 'Keep Player', style: 'cancel' },
+        { text: 'Cancel', style: 'cancel' },
         {
           text: 'Remove', style: 'destructive', onPress: async () => {
-            await (supabase.from('players') as any).update({ is_active: false }).eq('id', playerId);
-            await fetchTeam(TEAM_ID);
+            await (supabase.from('players') as any)
+              .update({ is_active: false })
+              .in('id', ids);
+            setSelectionMode(false);
+            setSelectedIds(new Set());
+            await fetchTeam(team!.id);
           },
         },
       ]
     );
   }
 
-  return (
-    <Modal visible={visible} animationType="slide">
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#F9FAFB' }} edges={['top']}>
-        {/* Header */}
-        <View style={{
-          flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-          paddingHorizontal: 16, paddingVertical: 14, backgroundColor: '#1E40AF',
-        }}>
-          <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Ionicons name={'chevron-back' as any} size={26} color="white" />
-          </TouchableOpacity>
-          <Text style={{ fontSize: 18, fontWeight: '700', color: 'white' }}>Roster</Text>
-          <View style={{ width: 26 }} />
-        </View>
+  async function handleLookupCode() {
+    const code = inviteInput.trim().toUpperCase();
+    if (code.length !== 4) return;
+    setJoinLoading(true);
+    setJoinError(null);
+    try {
+      const { data: teamData, error } = await (supabase.from('teams') as any)
+        .select('*').eq('invite_code', code).single();
+      if (error || !teamData) { setJoinError('No team found with that code.'); return; }
 
-        <>
-          <ScrollView contentContainerStyle={{ paddingTop: 12, paddingBottom: 32 }} showsVerticalScrollIndicator={false}>
-            {players.map((player) => {
-              const avatarColor = getAvatarColor(player.name);
-              return (
-                <View key={player.id} style={{
-                  flexDirection: 'row', alignItems: 'center',
-                  backgroundColor: 'white', marginHorizontal: 16, marginBottom: 8,
-                  borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10,
-                  borderWidth: 1, borderColor: '#F3F4F6',
-                }}>
-                  <View style={{
-                    width: 36, height: 36, borderRadius: 18,
-                    backgroundColor: avatarColor, alignItems: 'center', justifyContent: 'center', marginRight: 12,
-                  }}>
-                    <Text style={{ fontSize: 13, fontWeight: '700', color: 'white' }}>
-                      {getInitials(player.name)}
-                    </Text>
-                  </View>
-                  <Text style={{ flex: 1, fontSize: 15, fontWeight: '600', color: '#111827' }}>
-                    {player.name}
-                  </Text>
-                  <TouchableOpacity
-                    onPress={() => handleRemove(player.id, player.name)}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    style={{ padding: 4 }}
-                  >
-                    <Ionicons name={'trash-outline' as any} size={18} color="#9CA3AF" />
-                  </TouchableOpacity>
-                </View>
-              );
-            })}
-          </ScrollView>
-          <View style={{ paddingHorizontal: 16, paddingBottom: 32 }}>
-            <TouchableOpacity
-              onPress={() => setAddOpen(true)}
-              style={{
-                flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-                backgroundColor: '#2563EB', borderRadius: 12, paddingVertical: 14,
-              }}
-            >
-              <Ionicons name={'person-add-outline' as any} size={20} color="white" />
-              <Text style={{ color: 'white', fontWeight: '700', fontSize: 16 }}>Add Player</Text>
-            </TouchableOpacity>
-            </View>
-          </>
+      const { data: players } = await (supabase.from('players') as any)
+        .select('*')
+        .eq('team_id', teamData.id)
+        .eq('is_active', true)
+        .eq('is_ghost', false)
+        .is('user_id', null)
+        .order('name');
 
-        {/* Add Player bottom sheet */}
-        <Modal visible={addOpen} transparent animationType="slide">
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-            <View style={{ flex: 1, justifyContent: 'flex-end' }}>
-              <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setAddOpen(false)} />
-              <View style={{ backgroundColor: '#F3F4F6', borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '90%' }}>
-                <View style={{ width: 40, height: 4, backgroundColor: '#E5E7EB', borderRadius: 2, alignSelf: 'center', marginTop: 12, marginBottom: 4 }} />
-                <Text style={{ fontSize: 17, fontWeight: '700', color: '#111827', textAlign: 'center', paddingVertical: 12 }}>Add Player</Text>
-                <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-                  <AddPlayerForm onSubmit={handleAdd} submitLabel="Add to Roster" />
-                </ScrollView>
-              </View>
-            </View>
-          </KeyboardAvoidingView>
-        </Modal>
-      </SafeAreaView>
-    </Modal>
-  );
-}
-
-// ─── Main screen ──────────────────────────────────────────────────────────────
-
-const ACTIONS = [
-  { icon: 'create-outline',        label: 'Team Info'   },
-  { icon: 'people-outline',        label: 'Roster'      },
-  { icon: 'document-text-outline', label: 'Rules'       },
-  { icon: 'map-outline',           label: 'Strategies'  },
-] as const;
-
-export default function RosterScreen() {
-  const { team, players, loading, error, fetchTeam } = useTeamStore();
-  const [editTeamOpen, setEditTeamOpen] = useState(false);
-  const [editRosterOpen, setEditRosterOpen] = useState(false);
-  const [editRulesOpen, setEditRulesOpen] = useState(false);
-  const [editStrategiesOpen, setEditStrategiesOpen] = useState(false);
-
-  useEffect(() => {
-    fetchTeam(TEAM_ID);
-    migrateOutfieldPreferences().then(() => fetchTeam(TEAM_ID));
-  }, []);
-
-  const maleCount   = players.filter((p) => p.gender === 'M').length;
-  const femaleCount = players.filter((p) => p.gender === 'F').length;
-  const avatarColor = team ? getAvatarColor(team.name) : '#3B82F6';
-
-  function handleAction(label: string) {
-    if (label === 'Team Info') setEditTeamOpen(true);
-    else if (label === 'Roster') setEditRosterOpen(true);
-    else if (label === 'Rules') setEditRulesOpen(true);
-    else if (label === 'Strategies') setEditStrategiesOpen(true);
+      const unclaimed = players ?? [];
+      setJoinFoundTeam(teamData);
+      setJoinUnclaimed(unclaimed);
+      if (unclaimed.length === 0) setShowJoinNewPlayer(true);
+      setOnboardingView('join-claim');
+    } catch {
+      setJoinError('No team found with that code.');
+    } finally {
+      setJoinLoading(false);
+    }
   }
 
+  async function handleClaim(playerId: string) {
+    const uid = currentUserId ?? (await supabase.auth.getUser()).data.user?.id;
+    if (!uid) return;
+    setJoinLoading(true);
+    try {
+      await (supabase.from('players') as any).update({ user_id: uid }).eq('id', playerId);
+      await fetchTeamByOwner();
+    } finally {
+      setJoinLoading(false);
+    }
+  }
+
+  async function handleJoinAsNew(name: string, gender: 'M' | 'F', posPrefs: PosPrefs) {
+    const uid = currentUserId ?? (await supabase.auth.getUser()).data.user?.id;
+    if (!uid || !joinFoundTeam) return;
+
+    const { data: player } = await (supabase.from('players') as any)
+      .insert({ team_id: joinFoundTeam.id, name, gender, is_active: true, user_id: uid })
+      .select('id').single();
+
+    const prefRows = Object.entries(posPrefs)
+      .filter(([, pref]) => pref)
+      .map(([position, preference]) => ({ player_id: (player as any).id, position, preference: preference! }));
+    if (prefRows.length > 0) {
+      await (supabase.from('position_preferences') as any).insert(prefRows);
+    }
+    await fetchTeamByOwner();
+  }
+
+  // ── Loading splash ─────────────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#F9FAFB' }} edges={['top']}>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <ActivityIndicator size="large" color="#2563EB" />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // ── Add self after team creation ───────────────────────────────────────────
+  if (showAddSelf) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#F9FAFB' }} edges={['top']}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+          <ScrollView
+            contentContainerStyle={{ paddingHorizontal: 28, paddingVertical: 40 }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <TouchableOpacity
+              onPress={() => setShowAddSelf(false)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={{ alignSelf: 'flex-start', marginBottom: 24 }}
+            >
+              <Ionicons name={'chevron-back' as any} size={26} color="#374151" />
+            </TouchableOpacity>
+            <View style={{ marginBottom: 32 }}>
+              <Text style={{ fontSize: 24, fontWeight: '800', color: '#111827', marginBottom: 8 }}>
+                One more step
+              </Text>
+              <Text style={{ fontSize: 15, color: '#6B7280', lineHeight: 22 }}>
+                Add yourself to the roster so you can be assigned to positions and batting order.
+              </Text>
+            </View>
+            <AddPlayerForm
+              onSubmit={handleAddSelf}
+              namePlaceholder="Your name"
+              submitLabel="Join My Team"
+            />
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    );
+  }
+
+  // ── Onboarding (no team yet) ───────────────────────────────────────────────
+  if (!team) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#F9FAFB' }} edges={['top']}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+          <ScrollView
+            contentContainerStyle={{ flexGrow: 1, justifyContent: onboardingView === 'join-claim' ? 'flex-start' : 'center', paddingHorizontal: 28, paddingVertical: 40 }}
+            keyboardShouldPersistTaps="handled"
+          >
+
+            {/* ── Fork ──────────────────────────────────────────────────── */}
+            {onboardingView === 'fork' && (
+              <>
+                <View style={{ alignItems: 'center', marginBottom: 40 }}>
+                  <View style={{ width: 80, height: 80, borderRadius: 22, backgroundColor: '#1E40AF', alignItems: 'center', justifyContent: 'center', marginBottom: 18 }}>
+                    <Ionicons name={'shield' as any} size={40} color="white" />
+                  </View>
+                  <Text style={{ fontSize: 24, fontWeight: '800', color: '#111827', marginBottom: 8 }}>
+                    Welcome to Lineup Builder
+                  </Text>
+                  <Text style={{ fontSize: 15, color: '#6B7280', textAlign: 'center', lineHeight: 22 }}>
+                    Create a new team or join one{'\n'}with an invite code.
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => setOnboardingView('create')}
+                  style={{ backgroundColor: '#2563EB', borderRadius: 12, paddingVertical: 15, alignItems: 'center', marginBottom: 12 }}
+                >
+                  <Text style={{ color: 'white', fontWeight: '700', fontSize: 16 }}>Create a Team</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setOnboardingView('join-code')}
+                  style={{ borderWidth: 1.5, borderColor: '#2563EB', borderRadius: 12, paddingVertical: 15, alignItems: 'center' }}
+                >
+                  <Text style={{ color: '#2563EB', fontWeight: '700', fontSize: 16 }}>Join a Team</Text>
+                </TouchableOpacity>
+              </>
+            )}
+
+            {/* ── Create ────────────────────────────────────────────────── */}
+            {onboardingView === 'create' && (
+              <>
+                <TouchableOpacity onPress={() => setOnboardingView('fork')} style={{ alignSelf: 'flex-start', marginBottom: 24 }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Ionicons name={'chevron-back' as any} size={26} color="#374151" />
+                </TouchableOpacity>
+                <View style={{ alignItems: 'center', marginBottom: 32 }}>
+                  <Text style={{ fontSize: 24, fontWeight: '800', color: '#111827', marginBottom: 8 }}>Create your team</Text>
+                  <Text style={{ fontSize: 15, color: '#6B7280', textAlign: 'center', lineHeight: 22 }}>
+                    You can customize rules and add{'\n'}players after setup.
+                  </Text>
+                </View>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: '#374151', marginBottom: 6 }}>Team Name</Text>
+                <TextInput
+                  value={createName}
+                  onChangeText={setCreateName}
+                  placeholder="e.g. The Mighty Ducks"
+                  placeholderTextColor="#9CA3AF"
+                  autoCapitalize="words"
+                  returnKeyType="done"
+                  style={{ backgroundColor: 'white', borderWidth: 1.5, borderColor: '#E5E7EB', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14, fontSize: 16, color: '#111827', marginBottom: 24 }}
+                />
+                <Text style={{ fontSize: 13, fontWeight: '600', color: '#374151', marginBottom: 10 }}>Sport</Text>
+                <View style={{ flexDirection: 'row', gap: 10, marginBottom: 32 }}>
+                  {(['softball', 'kickball'] as Sport[]).map((sport) => {
+                    const active = createSport === sport;
+                    return (
+                      <TouchableOpacity key={sport} onPress={() => setCreateSport(sport)} style={{ flex: 1, paddingVertical: 14, borderRadius: 12, alignItems: 'center', backgroundColor: active ? '#2563EB' : 'white', borderWidth: 1.5, borderColor: active ? '#2563EB' : '#E5E7EB' }}>
+                        <Text style={{ fontSize: 15, fontWeight: '600', color: active ? 'white' : '#6B7280', textTransform: 'capitalize' }}>{sport}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+                <TouchableOpacity onPress={handleCreateTeam} disabled={creating || !createName.trim()} style={{ backgroundColor: '#2563EB', borderRadius: 12, paddingVertical: 15, alignItems: 'center', opacity: creating || !createName.trim() ? 0.4 : 1 }}>
+                  {creating ? <ActivityIndicator color="white" /> : <Text style={{ color: 'white', fontWeight: '700', fontSize: 16 }}>Create Team</Text>}
+                </TouchableOpacity>
+              </>
+            )}
+
+            {/* ── Join: enter code ──────────────────────────────────────── */}
+            {onboardingView === 'join-code' && (
+              <>
+                <TouchableOpacity onPress={() => { setOnboardingView('fork'); setInviteInput(''); setJoinError(null); }} style={{ alignSelf: 'flex-start', marginBottom: 24 }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Ionicons name={'chevron-back' as any} size={26} color="#374151" />
+                </TouchableOpacity>
+                <View style={{ marginBottom: 32 }}>
+                  <Text style={{ fontSize: 24, fontWeight: '800', color: '#111827', marginBottom: 8 }}>Join a Team</Text>
+                  <Text style={{ fontSize: 15, color: '#6B7280', lineHeight: 22 }}>
+                    Enter the 4-character invite code from your team captain.
+                  </Text>
+                </View>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: '#374151', marginBottom: 6 }}>Invite Code</Text>
+                <TextInput
+                  value={inviteInput}
+                  onChangeText={(t) => { setInviteInput(t.toUpperCase().slice(0, 4)); setJoinError(null); }}
+                  placeholder="e.g. B7KP"
+                  placeholderTextColor="#9CA3AF"
+                  autoCapitalize="characters"
+                  autoCorrect={false}
+                  returnKeyType="done"
+                  onSubmitEditing={handleLookupCode}
+                  style={{ backgroundColor: 'white', borderWidth: 1.5, borderColor: joinError ? '#EF4444' : '#E5E7EB', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14, fontSize: 22, fontWeight: '700', letterSpacing: 6, color: '#111827', marginBottom: joinError ? 8 : 28, textAlign: 'center' }}
+                />
+                {joinError && <Text style={{ fontSize: 13, color: '#EF4444', marginBottom: 20 }}>{joinError}</Text>}
+                <TouchableOpacity onPress={handleLookupCode} disabled={joinLoading || inviteInput.length !== 4} style={{ backgroundColor: '#2563EB', borderRadius: 12, paddingVertical: 15, alignItems: 'center', opacity: inviteInput.length !== 4 ? 0.4 : 1 }}>
+                  {joinLoading ? <ActivityIndicator color="white" /> : <Text style={{ color: 'white', fontWeight: '700', fontSize: 16 }}>Continue</Text>}
+                </TouchableOpacity>
+              </>
+            )}
+
+            {/* ── Join: claim player ────────────────────────────────────── */}
+            {onboardingView === 'join-claim' && !showJoinNewPlayer && (
+              <>
+                <TouchableOpacity onPress={() => setOnboardingView('join-code')} style={{ alignSelf: 'flex-start', marginBottom: 24 }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Ionicons name={'chevron-back' as any} size={26} color="#374151" />
+                </TouchableOpacity>
+                <View style={{ marginBottom: 28 }}>
+                  <Text style={{ fontSize: 24, fontWeight: '800', color: '#111827', marginBottom: 6 }}>Claim your spot</Text>
+                  <Text style={{ fontSize: 15, color: '#6B7280', lineHeight: 22 }}>
+                    Select yourself from {joinFoundTeam?.name ?? 'the roster'}.
+                  </Text>
+                </View>
+                {joinUnclaimed.length === 0 && (
+                  <Text style={{ fontSize: 14, color: '#9CA3AF', textAlign: 'center', marginBottom: 24 }}>
+                    No unclaimed players on this roster yet.
+                  </Text>
+                )}
+                {joinUnclaimed.map((p) => (
+                  <TouchableOpacity
+                    key={p.id}
+                    onPress={() => handleClaim(p.id)}
+                    disabled={joinLoading}
+                    style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'white', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14, marginBottom: 8, borderWidth: 1, borderColor: '#F3F4F6' }}
+                  >
+                    <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: getAvatarColor(p.name), alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: 'white' }}>{getInitials(p.name)}</Text>
+                    </View>
+                    <Text style={{ flex: 1, fontSize: 15, fontWeight: '600', color: '#111827' }}>{p.name}</Text>
+                    <Text style={{ fontSize: 13, color: '#9CA3AF' }}>{p.gender === 'M' ? 'Man' : 'Woman'}</Text>
+                  </TouchableOpacity>
+                ))}
+                <TouchableOpacity onPress={() => setShowJoinNewPlayer(true)} style={{ marginTop: 8, paddingVertical: 14, alignItems: 'center', borderWidth: 1.5, borderColor: '#E5E7EB', borderRadius: 12, backgroundColor: 'white' }}>
+                  <Text style={{ fontSize: 15, fontWeight: '600', color: '#374151' }}>I'm not listed — add me</Text>
+                </TouchableOpacity>
+              </>
+            )}
+
+            {/* ── Join: new player form ─────────────────────────────────── */}
+            {onboardingView === 'join-claim' && showJoinNewPlayer && (
+              <>
+                <TouchableOpacity onPress={() => setShowJoinNewPlayer(false)} style={{ alignSelf: 'flex-start', marginBottom: 24 }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Ionicons name={'chevron-back' as any} size={26} color="#374151" />
+                </TouchableOpacity>
+                <View style={{ marginBottom: 28 }}>
+                  <Text style={{ fontSize: 24, fontWeight: '800', color: '#111827', marginBottom: 6 }}>Add yourself</Text>
+                  <Text style={{ fontSize: 15, color: '#6B7280', lineHeight: 22 }}>
+                    Enter your details to join {joinFoundTeam?.name ?? 'the team'}.
+                  </Text>
+                </View>
+                <AddPlayerForm onSubmit={handleJoinAsNew} namePlaceholder="Your name" submitLabel="Join Team" resetOnSubmit={false} />
+              </>
+            )}
+
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    );
+  }
+
+  // ── Normal team view ───────────────────────────────────────────────────────
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#F9FAFB' }} edges={['top']}>
 
       {/* ── Team profile header ─────────────────────────────────────────── */}
-      <View style={{ alignItems: 'center', paddingTop: 28, paddingBottom: 20, backgroundColor: 'white', borderBottomWidth: 1, borderBottomColor: '#F3F4F6' }}>
-        {loading || !team ? (
-          <ActivityIndicator size="large" color="#2563EB" style={{ marginVertical: 24 }} />
-        ) : (
-          <>
+      <View style={{ backgroundColor: 'white', borderBottomWidth: 1, borderBottomColor: '#F3F4F6' }}>
+        {/* Control row */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 12, height: 44 }}>
+          <View style={{ width: 40, alignItems: 'flex-start' }}>
+            {selectionMode && (
+              <TouchableOpacity onPress={() => { setSelectionMode(false); setSelectedIds(new Set()); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons name={'chevron-back' as any} size={26} color="#374151" />
+              </TouchableOpacity>
+            )}
+          </View>
+          <View style={{ flex: 1, alignItems: 'center' }}>
+            {selectionMode && (
+              <Text style={{ fontSize: 15, fontWeight: '600', color: '#111827' }}>
+                {selectedIds.size > 0 ? `${selectedIds.size} selected` : 'Tap to select'}
+              </Text>
+            )}
+          </View>
+          <View style={{ width: 40, alignItems: 'flex-end' }}>
+            {selectionMode ? (
+              selectedIds.size > 0 && (
+                <TouchableOpacity onPress={handleDeleteSelected} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Ionicons name={'trash' as any} size={22} color="#DC2626" />
+                </TouchableOpacity>
+              )
+            ) : (
+              <TouchableOpacity
+                onPress={() => Alert.alert('Manage Roster', undefined, [
+                  { text: 'Remove Players', onPress: () => setSelectionMode(true) },
+                  { text: 'Cancel', style: 'cancel' },
+                ])}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons name={'ellipsis-horizontal' as any} size={22} color="#374151" />
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+
+        {/* Centered content */}
+        <View style={{ alignItems: 'center', paddingTop: 12, paddingBottom: 20 }}>
+          <TouchableOpacity onPress={() => setEditTeamOpen(true)} activeOpacity={0.7} style={{ marginBottom: 12 }}>
             {team.photo_url ? (
-              <Image
-                source={{ uri: team.photo_url }}
-                style={{ width: 88, height: 88, borderRadius: 44, marginBottom: 12 }}
-              />
+              <Image source={{ uri: team.photo_url }} style={{ width: 88, height: 88, borderRadius: 44 }} />
             ) : (
               <View style={{
                 width: 88, height: 88, borderRadius: 44,
                 backgroundColor: avatarColor,
-                alignItems: 'center', justifyContent: 'center', marginBottom: 12,
+                alignItems: 'center', justifyContent: 'center',
               }}>
                 <Text style={{ fontSize: 32, fontWeight: '700', color: 'white' }}>
                   {getInitials(team.name)}
                 </Text>
               </View>
             )}
-            <Text style={{ fontSize: 22, fontWeight: '800', color: '#111827', marginBottom: 4 }}>
-              {team?.name}
-            </Text>
-            <Text style={{ fontSize: 13, color: '#6B7280' }}>
-              {players.length} Players  |  {maleCount}M  {femaleCount}W
-            </Text>
-          </>
-        )}
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setEditTeamOpen(true)} activeOpacity={0.7} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+            <Text style={{ fontSize: 22, fontWeight: '800', color: '#111827' }}>{team.name}</Text>
+            <Ionicons name={'pencil' as any} size={20} color="#9CA3AF" />
+          </TouchableOpacity>
+          {team.invite_code && (
+            <TouchableOpacity
+              onPress={handleCopyCode}
+              activeOpacity={0.7}
+              style={{
+                flexDirection: 'row', alignItems: 'center', gap: 8,
+                borderWidth: 1.5,
+                borderColor: codeCopied ? '#16A34A' : '#BFDBFE',
+                borderRadius: 8,
+                paddingHorizontal: 12, paddingVertical: 5,
+                marginBottom: 10,
+              }}
+            >
+              <Text style={{ fontSize: 16, fontWeight: '700', letterSpacing: 3, color: codeCopied ? '#16A34A' : '#2563EB' }}>
+                {team.invite_code}
+              </Text>
+              <Ionicons name={(codeCopied ? 'checkmark-circle' : 'copy-outline') as any} size={16} color={codeCopied ? '#16A34A' : '#2563EB'} />
+            </TouchableOpacity>
+          )}
+          <Text style={{ fontSize: 13, color: '#6B7280' }}>
+            {players.length} Players  |  {maleCount}M  {femaleCount}W
+          </Text>
+        </View>
       </View>
 
       {/* ── Action icons ────────────────────────────────────────────────── */}
@@ -435,7 +811,7 @@ export default function RosterScreen() {
           <Text style={{ color: '#DC2626', fontWeight: '500' }}>Failed to load roster</Text>
           <Text style={{ color: '#9CA3AF', fontSize: 13, marginTop: 4 }}>{error}</Text>
           <TouchableOpacity
-            onPress={() => fetchTeam(TEAM_ID)}
+            onPress={() => fetchTeamByOwner()}
             style={{ marginTop: 16, backgroundColor: '#2563EB', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8 }}
           >
             <Text style={{ color: 'white', fontWeight: '600' }}>Retry</Text>
@@ -447,20 +823,132 @@ export default function RosterScreen() {
           contentContainerStyle={{ paddingTop: 16, paddingBottom: 32 }}
           showsVerticalScrollIndicator={false}
         >
-          {players.map((player) => (
-            <PlayerCard key={player.id} player={player} />
-          ))}
+          {[...players]
+            .sort((a, b) => {
+              const aCapt = a.user_id === team.owner_id ? 0 : 1;
+              const bCapt = b.user_id === team.owner_id ? 0 : 1;
+              return aCapt - bCapt;
+            })
+            .map((player) => {
+              const isSelected = selectedIds.has(player.id);
+              if (selectionMode) {
+                return (
+                  <TouchableOpacity
+                    key={player.id}
+                    activeOpacity={0.85}
+                    onPress={() => setSelectedIds((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(player.id)) next.delete(player.id);
+                      else next.add(player.id);
+                      return next;
+                    })}
+                  >
+                    <PlayerCard
+                      player={player}
+                      isCaptain={player.user_id === team.owner_id}
+                      isMe={!!currentUserId && player.user_id === currentUserId}
+                      isSelected={isSelected}
+                    />
+                  </TouchableOpacity>
+                );
+              }
+              return (
+                <PlayerCard
+                  key={player.id}
+                  player={player}
+                  isCaptain={player.user_id === team.owner_id}
+                  isMe={!!currentUserId && player.user_id === currentUserId}
+                  onEdit={player.user_id === currentUserId && currentUserId ? () => setEditSelfOpen(true) : undefined}
+                />
+              );
+            })}
         </ScrollView>
       )}
+
+      {/* ── Edit self modal ─────────────────────────────────────────────── */}
+      <Modal visible={editSelfOpen} animationType="slide">
+        <SafeAreaView style={{ flex: 1, backgroundColor: '#F9FAFB' }} edges={['top']}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+            <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8 }}>
+              <TouchableOpacity
+                onPress={() => setEditSelfOpen(false)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={{ alignSelf: 'flex-start', marginBottom: 20 }}
+              >
+                <Ionicons name={'chevron-back' as any} size={26} color="#374151" />
+              </TouchableOpacity>
+              <Text style={{ fontSize: 24, fontWeight: '800', color: '#111827', marginBottom: 8 }}>
+                Edit Your Profile
+              </Text>
+              <Text style={{ fontSize: 15, color: '#6B7280', lineHeight: 22 }}>
+                Update your name, gender, and position preferences.
+              </Text>
+            </View>
+            <ScrollView
+              contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              <AddPlayerForm
+                key={editSelfOpen ? 'open' : 'closed'}
+                onSubmit={handleEditSelf}
+                namePlaceholder="Your name"
+                submitLabel="Save Changes"
+                initialValues={myPlayer ? {
+                  name: myPlayer.name,
+                  gender: myPlayer.gender,
+                  posPrefs: Object.fromEntries(
+                    (myPlayer.position_preferences ?? []).map((p) => [p.position, p.preference])
+                  ) as PosPrefs,
+                } : undefined}
+                resetOnSubmit={false}
+              />
+            </ScrollView>
+          </KeyboardAvoidingView>
+        </SafeAreaView>
+      </Modal>
+
+      {/* FAB */}
+      {!selectionMode && (
+        <TouchableOpacity
+          onPress={() => Alert.alert('Add to Roster', undefined, [
+            { text: 'Add Player', onPress: () => setAddPlayerOpen(true) },
+            { text: 'Copy Invite Code', onPress: handleCopyCode },
+            { text: 'Cancel', style: 'cancel' },
+          ])}
+          style={{
+            position: 'absolute', bottom: 32, right: 20,
+            width: 56, height: 56, borderRadius: 28,
+            backgroundColor: '#2563EB',
+            alignItems: 'center', justifyContent: 'center',
+            shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.25, shadowRadius: 4, elevation: 5,
+          }}
+        >
+          <Ionicons name={'add' as any} size={28} color="white" />
+        </TouchableOpacity>
+      )}
+
+      {/* Add Player bottom sheet */}
+      <Modal visible={addPlayerOpen} transparent animationType="slide">
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+          <View style={{ flex: 1, justifyContent: 'flex-end' }}>
+            <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setAddPlayerOpen(false)} />
+            <View style={{ backgroundColor: '#F3F4F6', borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '90%' }}>
+              <View style={{ width: 40, height: 4, backgroundColor: '#E5E7EB', borderRadius: 2, alignSelf: 'center', marginTop: 12, marginBottom: 4 }} />
+              <Text style={{ fontSize: 17, fontWeight: '700', color: '#111827', textAlign: 'center', paddingVertical: 12 }}>Add Player</Text>
+              <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+                <AddPlayerForm onSubmit={handleAddPlayer} submitLabel="Add to Roster" />
+              </ScrollView>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
 
       <EditTeamModal
         visible={editTeamOpen}
         onClose={() => setEditTeamOpen(false)}
-        onSaved={() => fetchTeam(TEAM_ID)}
-      />
-      <EditRosterModal
-        visible={editRosterOpen}
-        onClose={() => setEditRosterOpen(false)}
+        onSaved={() => fetchTeam(team.id)}
       />
       <EditRulesModal
         visible={editRulesOpen}

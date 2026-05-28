@@ -8,7 +8,6 @@ import { useTeamStore } from '../../../stores/teamStore';
 import EditRulesModal, { DEFAULT_RULES } from '../../../components/EditRulesModal';
 import { supabase } from '../../../lib/supabase';
 
-const TEAM_ID = '00000000-0000-0000-0000-000000000001';
 
 const DEFENSIVE_COMPLETE_COUNT = 10;
 const INNINGS_COUNT = 6;
@@ -38,12 +37,12 @@ interface GameStatuses {
 
 export default function LineupsScreen() {
   const { games, selectedGame, activeLineupId, loading, fetchGames, selectGame } = useGameStore();
-  const { team, fetchTeam } = useTeamStore();
+  const { team, fetchTeam, fetchTeamByOwner } = useTeamStore();
   const [gameStatuses, setGameStatuses] = useState<Record<string, GameStatuses>>({});
   const [rulesOpen, setRulesOpen] = useState(false);
 
-  useFocusEffect(useCallback(() => { fetchGames(TEAM_ID); }, []));
-  useFocusEffect(useCallback(() => { fetchTeam(TEAM_ID); }, []));
+  useFocusEffect(useCallback(() => { if (team?.id) fetchGames(team.id); }, [team?.id]));
+  useFocusEffect(useCallback(() => { if (team?.id) fetchTeam(team.id); else fetchTeamByOwner(); }, [team?.id]));
   useFocusEffect(useCallback(() => { if (games.length > 0) fetchLineupStatuses(); }, [games]));
   useFocusEffect(useCallback(() => {
     if (games.length === 0 || selectedGame !== null) return;
@@ -180,6 +179,8 @@ export default function LineupsScreen() {
               const isSelected = selectedGame?.id === game.id;
               const statuses = gameStatuses[game.id];
               const bothComplete = game.roster_locked && statuses?.batting === 'complete' && statuses?.defensive === 'complete';
+              const today = new Date().toISOString().slice(0, 10);
+              const isPast = game.date.slice(0, 10) < today;
               return (
                 <TouchableOpacity
                   key={game.id}
@@ -189,14 +190,14 @@ export default function LineupsScreen() {
                     flexDirection: 'row', alignItems: 'center', gap: 5,
                     paddingHorizontal: 14, paddingVertical: 8,
                     borderRadius: 20, borderWidth: 1.5,
-                    borderColor: isSelected ? '#2563EB' : '#E5E7EB',
-                    backgroundColor: isSelected ? '#EFF6FF' : 'white',
+                    borderColor: isSelected ? '#2563EB' : isPast ? '#F3F4F6' : '#E5E7EB',
+                    backgroundColor: isSelected ? '#EFF6FF' : isPast ? '#F9FAFB' : 'white',
                   }}
                 >
                   {bothComplete && (
-                    <Ionicons name={'checkmark-circle' as any} size={14} color="#16A34A" />
+                    <Ionicons name={'checkmark-circle' as any} size={14} color={isPast ? '#9CA3AF' : '#16A34A'} />
                   )}
-                  <Text style={{ fontSize: 14, fontWeight: isSelected ? '700' : '500', color: isSelected ? '#1D4ED8' : '#374151' }}>
+                  <Text style={{ fontSize: 14, fontWeight: isSelected ? '700' : '500', color: isSelected ? '#1D4ED8' : isPast ? '#9CA3AF' : '#374151' }}>
                     {formatShortDate(game.date.slice(0, 10))}
                   </Text>
                 </TouchableOpacity>

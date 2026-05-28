@@ -17,7 +17,11 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ],
+      "package": "com.rollycar.lineupapp"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -31,6 +35,12 @@
           "photosPermission": "Allow Lineup Manager to access your photos to set your team profile picture."
         }
       ]
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "a17ea611-c502-4559-a964-a32aab9a512f"
+      }
+    }
   }
 }

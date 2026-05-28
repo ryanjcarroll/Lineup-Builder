@@ -1,18 +1,18 @@
-import { useEffect, useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import {
   View, Text, TouchableOpacity, Alert, ActivityIndicator,
   ScrollView, Modal, TextInput, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Calendar, DateData } from 'react-native-calendars';
-import { useGameStore } from '../../stores/gameStore';
-
-const TEAM_ID = '00000000-0000-0000-0000-000000000001';
+import { useGameStore } from '../../../stores/gameStore';
+import { useTeamStore } from '../../../stores/teamStore';
 
 const DEFAULT_GAME_TIME = new Date(2000, 0, 1, 19, 0); // 7:00 PM
 
-// ─── Time picker ─────────────────────────────────────────────────────────────
+// â”€â”€â”€ Time picker â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function TimeColumn({ label, onUp, onDown }: { label: string; onUp: () => void; onDown: () => void }) {
   return (
@@ -102,17 +102,18 @@ function formatTimeFromDate(d: Date): string {
   return `${h}:${m} ${ampm}`;
 }
 
-// ─── Screen ───────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Screen â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export default function ScheduleScreen() {
   const { games, loading, fetchGames, addGame, removeGame } = useGameStore();
+  const { team } = useTeamStore();
 
   const [pendingDate, setPendingDate] = useState<string | null>(null);
   const [opponent, setOpponent] = useState('');
   const [gameTime, setGameTime] = useState<Date>(DEFAULT_GAME_TIME);
   const [creating, setCreating] = useState(false);
 
-  useEffect(() => { fetchGames(TEAM_ID); }, []);
+  useEffect(() => { if (team?.id) fetchGames(team.id); }, [team?.id]);
 
   const gameDates = new Set(games.map((g) => g.date.slice(0, 10)));
 
@@ -147,7 +148,7 @@ export default function ScheduleScreen() {
     if (!pendingDate) return;
     setCreating(true);
     try {
-      await addGame(TEAM_ID, pendingDate, {
+      await addGame(team!.id, pendingDate, {
         opponent: opponent.trim() || undefined,
         startTime: formatTimeFromDate(gameTime),
       });
@@ -159,6 +160,7 @@ export default function ScheduleScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#F9FAFB' }} edges={['bottom']}>
+      <Stack.Screen options={{ title: 'Schedule' }} />
       <View style={{ flex: 1 }}>
         {loading ? (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
@@ -238,7 +240,7 @@ export default function ScheduleScreen() {
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     style={{ padding: 4 }}
                   >
-                    <Text style={{ fontSize: 20, color: '#9CA3AF', lineHeight: 20 }}>×</Text>
+                    <Ionicons name={'close' as any} size={20} color="#9CA3AF" />
                   </TouchableOpacity>
                 </View>
               ))}
@@ -334,3 +336,4 @@ function formatMonth(dateString: string): string {
 function formatDay(dateString: string): string {
   return dateString.split('-')[2].replace(/^0/, '');
 }
+

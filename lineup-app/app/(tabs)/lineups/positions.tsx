@@ -20,7 +20,6 @@ import { useGameStore } from '../../../stores/gameStore';
 import { supabase } from '../../../lib/supabase';
 import { Player } from '../../../types/database';
 
-const TEAM_ID       = '00000000-0000-0000-0000-000000000001';
 const INNINGS_COUNT = 6;
 const BUTTON_W  = 70;
 const BUTTON_H  = 48;
@@ -144,7 +143,7 @@ function serializeAssignments(assignments: Record<number, InningMap>): string {
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function PositionsScreen() {
-  const { team, players, fetchTeam } = useTeamStore();
+  const { team, players, fetchTeamByOwner } = useTeamStore();
   const { activeLineupId, selectedGame } = useGameStore();
   const maxMenField = team?.rules?.max_male_in_field ?? DEFAULT_RULES.max_male_in_field;
   const navigation = useNavigation();
@@ -180,7 +179,7 @@ export default function PositionsScreen() {
     return unsubscribe;
   }, [navigation]);
 
-  useEffect(() => { if (players.length === 0) fetchTeam(TEAM_ID); }, []);
+  useEffect(() => { if (players.length === 0) fetchTeamByOwner(); }, []);
 
   useEffect(() => { if (selectedGame) loadRoster(); }, [selectedGame, players]);
 
@@ -270,7 +269,7 @@ export default function PositionsScreen() {
   const womenInRoster = rosterPlayers.filter(p => p.gender === 'F').length;
   const fieldersAllowed = Math.min(maxField, womenInRoster + maxMenField, rosterPlayers.length);
   const teamStrategies = team?.rules?.strategies as Record<number, string[]> | undefined;
-  const activePositionKeys = teamStrategies?.[fieldersAllowed] ?? DEFAULT_STRATEGIES[fieldersAllowed] ?? FIELD_POSITIONS.map(p => p.key);
+  const activePositionKeys = teamStrategies?.[fieldersAllowed] ?? DEFAULT_STRATEGIES[fieldersAllowed] ?? teamStrategies?.[maxField] ?? DEFAULT_STRATEGIES[maxField] ?? FIELD_POSITIONS.map(p => p.key);
   const activeFieldPositions = FIELD_POSITIONS.filter(p => activePositionKeys.includes(p.key));
 
   function isInningFull(inning: number): boolean {

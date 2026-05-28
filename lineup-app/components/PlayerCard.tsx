@@ -1,9 +1,14 @@
-import { View, Text } from 'react-native';
+import { View, Text, TouchableOpacity } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { Player } from '../types/database';
 import GenderCorner from './GenderCorner';
 
 interface Props {
   player: Player;
+  onEdit?: () => void;
+  isCaptain?: boolean;
+  isMe?: boolean;
+  isSelected?: boolean;
 }
 
 const AVATAR_COLORS = [
@@ -38,30 +43,64 @@ function getAvatarColor(name: string) {
   return AVATAR_COLORS[hash % AVATAR_COLORS.length];
 }
 
-export default function PlayerCard({ player }: Props) {
-  const prefs = player.position_preferences ?? [];
-  const preferred = prefs.filter((p) => p.preference === 'preferred').map((p) => p.position);
-  const avoid = prefs.filter((p) => p.preference === 'avoid').map((p) => p.position);
+export default function PlayerCard({ player, onEdit, isCaptain, isMe, isSelected }: Props) {
+  const POSITION_ORDER = ['P', 'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF'];
+  const sortByOrder = (a: string, b: string) => POSITION_ORDER.indexOf(a) - POSITION_ORDER.indexOf(b);
+  const prefs = (player.position_preferences ?? []).filter((p) => p.position !== 'LC' && p.position !== 'RC');
+  const preferred = prefs.filter((p) => p.preference === 'preferred').map((p) => p.position).sort(sortByOrder);
+  const avoid = prefs.filter((p) => p.preference === 'avoid').map((p) => p.position).sort(sortByOrder);
+  const isUnlinked = !player.user_id;
   const { bg, text } = getAvatarColor(player.name);
 
   return (
     // Outer View carries shadow; inner View clips triangle to border radius
-    <View className="bg-white rounded-xl mx-4 mb-3 border border-gray-100 shadow-sm">
-      <View style={{ borderRadius: 12, overflow: 'hidden' }}>
+    <View className="bg-white rounded-xl mx-4 mb-3 shadow-sm" style={{ borderWidth: isSelected ? 2 : 1, borderColor: isSelected ? '#2563EB' : '#F3F4F6' }}>
+      <View style={{ borderRadius: isSelected ? 11 : 12, overflow: 'hidden', backgroundColor: isSelected ? '#EFF6FF' : 'white' }}>
         <GenderCorner gender={player.gender} size={21} />
         <View className="flex-row items-start px-4 pt-4 pb-3">
           <View style={{
             width: 44, height: 44, borderRadius: 22,
-            backgroundColor: bg, alignItems: 'center', justifyContent: 'center',
+            backgroundColor: isSelected ? '#2563EB' : (isUnlinked ? '#F3F4F6' : bg),
+            alignItems: 'center', justifyContent: 'center',
             marginRight: 12, flexShrink: 0,
+            ...(isUnlinked && !isSelected ? { borderWidth: 1.5, borderStyle: 'dashed', borderColor: '#9CA3AF' } : {}),
           }}>
-            <Text style={{ fontSize: 16, fontWeight: '700', color: text }}>
-              {getInitials(player.name)}
-            </Text>
+            {isSelected ? (
+              <Ionicons name={'checkmark' as any} size={22} color="white" />
+            ) : (
+              <Text style={{ fontSize: 16, fontWeight: '700', color: isUnlinked ? '#9CA3AF' : text }}>
+                {getInitials(player.name)}
+              </Text>
+            )}
           </View>
 
           <View className="flex-1">
-            <Text className="text-gray-900 font-bold text-base">{player.name}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Text className="text-gray-900 font-bold text-base" style={{ flex: 1 }}>{player.name}</Text>
+              {isCaptain && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: '#DBEAFE', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 12 }}>
+                  <Ionicons name={'shield-checkmark' as any} size={11} color="#1D4ED8" />
+                  <Text style={{ fontSize: 11, fontWeight: '600', color: '#1D4ED8' }}>Captain</Text>
+                </View>
+              )}
+              {isMe && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: '#DCFCE7', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 12 }}>
+                  <Ionicons name={'person' as any} size={11} color="#15803D" />
+                  <Text style={{ fontSize: 11, fontWeight: '600', color: '#15803D' }}>Me</Text>
+                </View>
+              )}
+              {isUnlinked && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: '#F3F4F6', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 12 }}>
+                  <Ionicons name={'person-outline' as any} size={11} color="#6B7280" />
+                  <Text style={{ fontSize: 11, fontWeight: '600', color: '#6B7280' }}>Unlinked</Text>
+                </View>
+              )}
+              {onEdit && (
+                <TouchableOpacity onPress={onEdit} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ padding: 2 }}>
+                  <Ionicons name={'pencil' as any} size={20} color="#9CA3AF" />
+                </TouchableOpacity>
+              )}
+            </View>
             {(preferred.length > 0 || avoid.length > 0) && (
               <View className="flex-row flex-wrap gap-1 mt-2">
                 {preferred.map((pos) => (

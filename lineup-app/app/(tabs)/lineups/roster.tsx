@@ -14,7 +14,6 @@ import { supabase } from '../../../lib/supabase';
 import { Player } from '../../../types/database';
 import { DEFAULT_RULES } from '../../../components/EditRulesModal';
 
-const TEAM_ID = '00000000-0000-0000-0000-000000000001';
 
 const AVATAR_COLORS = [
   '#3B82F6', '#8B5CF6', '#EC4899', '#F97316', '#14B8A6', '#6366F1',
@@ -147,7 +146,7 @@ export default function GameRosterScreen() {
   async function handleAddSub(name: string, gender: 'M' | 'F', posPrefs: PosPrefs) {
     if (!selectedGame) return;
     const { data: player, error } = await (supabase.from('players') as any)
-      .insert({ team_id: TEAM_ID, name, gender, is_active: false })
+      .insert({ team_id: team!.id, name, gender, is_active: false })
       .select('id')
       .single();
     if (error || !player) return;

@@ -14,7 +14,6 @@ import { DEFAULT_RULES } from '../../../components/EditRulesModal';
 import { supabase } from '../../../lib/supabase';
 import { Player } from '../../../types/database';
 
-const TEAM_ID = '00000000-0000-0000-0000-000000000001';
 
 // ─── Validation ───────────────────────────────────────────────────────────────
 
@@ -138,7 +137,7 @@ function AddGhostForm({ onSubmit }: { onSubmit: (name: string, gender: 'M' | 'F'
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function BattingOrderScreen() {
-  const { team, players, fetchTeam } = useTeamStore();
+  const { team, players, fetchTeam, fetchTeamByOwner } = useTeamStore();
   const { activeLineupId, selectedGame } = useGameStore();
   const rules = team?.rules;
   const maxConsecMen = rules?.max_consecutive_male_batting ?? DEFAULT_RULES.max_consecutive_male_batting;
@@ -174,7 +173,7 @@ export default function BattingOrderScreen() {
   }, [navigation]);
 
   useEffect(() => {
-    if (players.length === 0) fetchTeam(TEAM_ID);
+    if (players.length === 0) fetchTeamByOwner();
   }, []);
 
   useEffect(() => {
@@ -273,7 +272,7 @@ export default function BattingOrderScreen() {
 
   async function handleAddGhost(name: string, gender: 'M' | 'F') {
     const { data: player } = await (supabase.from('players') as any)
-      .insert({ team_id: TEAM_ID, name, gender, is_active: false, is_ghost: true })
+      .insert({ team_id: team!.id, name, gender, is_active: false, is_ghost: true })
       .select()
       .single();
     if (player) {
