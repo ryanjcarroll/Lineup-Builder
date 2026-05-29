@@ -260,9 +260,13 @@ function TeamSwitcherSheet({ visible, onClose }: { visible: boolean; onClose: ()
                       <TouchableOpacity key={t.id} onPress={() => handleSelect(t.id)} activeOpacity={0.7}
                         style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 13, paddingHorizontal: 16, backgroundColor: isActive ? '#DBEAFE' : 'white', borderRadius: 14, marginBottom: 8 }}
                       >
-                        <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: BRAND, alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
-                          <Text style={{ fontSize: 13, fontWeight: '700', color: 'white' }}>{getInitials(t.name)}</Text>
-                        </View>
+                        {t.photo_url ? (
+                          <Image source={{ uri: t.photo_url }} style={{ width: 36, height: 36, borderRadius: 18, marginRight: 12 }} />
+                        ) : (
+                          <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: BRAND, alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+                            <Text style={{ fontSize: 13, fontWeight: '700', color: 'white' }}>{getInitials(t.name)}</Text>
+                          </View>
+                        )}
                         <View style={{ flex: 1 }}>
                           <Text style={{ fontSize: 16, fontWeight: '600', color: isActive ? '#1D4ED8' : '#111827' }}>{t.name}</Text>
                           <Text style={{ fontSize: 12, color: isActive ? '#3B82F6' : '#9CA3AF', textTransform: 'capitalize', marginTop: 1 }}>{t.sport}</Text>

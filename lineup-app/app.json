@@ -31,7 +31,7 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow Lineup Manager to access your photos to set your team profile picture."
+          "photosPermission": "Allow Lineup Manager to access your photos to set profile pictures and import rosters."
         }
       ]
     ],

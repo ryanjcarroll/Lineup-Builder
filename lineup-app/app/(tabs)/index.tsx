@@ -294,7 +294,7 @@ function EditTeamModal({ visible, onClose, onSaved, isCaptain }: {
 
 // ─── Popup Menu ───────────────────────────────────────────────────────────────
 
-interface PopupMenuItem { label: string; onPress: () => void }
+interface PopupMenuItem { label: string; onPress: () => void; disabled?: boolean }
 
 function PopupMenu({ items, anchorRef, visible, onClose, preferAbove = false }: {
   items: PopupMenuItem[];
@@ -346,14 +346,14 @@ function PopupMenu({ items, anchorRef, visible, onClose, preferAbove = false }: 
             {items.map((item, index) => (
               <TouchableOpacity
                 key={item.label}
-                onPress={() => { onClose(); item.onPress(); }}
+                onPress={() => { if (item.disabled) return; onClose(); item.onPress(); }}
                 style={{
                   paddingHorizontal: 16, paddingVertical: 13,
                   borderTopWidth: index > 0 ? 1 : 0,
                   borderTopColor: '#F3F4F6',
                 }}
               >
-                <Text style={{ fontSize: 15, color: '#111827' }}>{item.label}</Text>
+                <Text style={{ fontSize: 15, color: item.disabled ? '#D1D5DB' : '#111827' }}>{item.label}</Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -455,6 +455,246 @@ function EditPositionPrefsModal({ visible, onClose, onSave, initialPrefs }: {
   );
 }
 
+// ─── Bulk Import Modal ────────────────────────────────────────────────────────
+
+type BulkRow = { id: string; name: string; gender: 'M' | 'F' };
+
+function BulkImportModal({ visible, onClose, onImport }: {
+  visible: boolean;
+  onClose: () => void;
+  onImport: (players: { name: string; gender: 'M' | 'F' }[]) => Promise<void>;
+}) {
+  const [rows, setRows] = useState<BulkRow[]>([]);
+  const [importing, setImporting] = useState(false);
+  const [parsing, setParsing] = useState(false);
+
+  useEffect(() => {
+    if (visible) {
+      setRows(Array.from({ length: 5 }, (_, i) => ({ id: String(i), name: '', gender: 'M' as const })));
+      setImporting(false);
+    }
+  }, [visible]);
+
+  function updateRow(id: string, updates: Partial<BulkRow>) {
+    setRows(prev => prev.map(r => r.id === id ? { ...r, ...updates } : r));
+  }
+
+  function removeRow(id: string) {
+    setRows(prev => prev.filter(r => r.id !== id));
+  }
+
+  function addRow() {
+    if (rows.length >= 20) return;
+    setRows(prev => [...prev, { id: Math.random().toString(), name: '', gender: 'M' }]);
+  }
+
+  async function handleAiImport() {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission needed', 'Please allow access to your photos.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      quality: 0.8,
+      base64: true,
+    });
+    if (result.canceled) return;
+    const base64 = result.assets[0].base64;
+    if (!base64) return;
+
+    setParsing(true);
+    try {
+      const { data, error } = await (supabase.functions as any).invoke('parse-roster', {
+        body: { image: base64 },
+      });
+      if (error) throw error;
+      const parsed = data.players as { name: string; gender?: string }[];
+      if (!parsed?.length) {
+        Alert.alert('No players found', 'Could not extract any names from this screenshot.');
+        return;
+      }
+      setRows(() => {
+        const newRows: BulkRow[] = parsed.slice(0, 20).map((p, i) => ({
+          id: String(i),
+          name: p.name.trim(),
+          gender: p.gender === 'F' ? 'F' : 'M',
+        }));
+        return newRows;
+      });
+    } catch {
+      Alert.alert('Import failed', 'Could not parse the screenshot. The AI feature may not be set up yet.');
+    } finally {
+      setParsing(false);
+    }
+  }
+
+  async function handlePasteFromClipboard() {
+    const text = await Clipboard.getStringAsync();
+    if (!text.trim()) return;
+    handleTextChange(rows[0]?.id ?? '', text);
+  }
+
+  function handleTextChange(id: string, text: string) {
+    if (text.includes('\n')) {
+      const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+      if (lines.length > 1) {
+        setRows(prev => {
+          const idx = prev.findIndex(r => r.id === id);
+          const before = prev.slice(0, idx);
+          const after = prev.slice(idx + 1);
+          const gender = prev[idx]?.gender ?? 'M';
+          const newRows: BulkRow[] = lines.map((name, i) => ({
+            id: i === 0 ? id : Math.random().toString(),
+            name,
+            gender,
+          }));
+          return [...before, ...newRows, ...after].slice(0, 20);
+        });
+        return;
+      }
+    }
+    updateRow(id, { name: text });
+  }
+
+  const filledRows = rows.filter(r => r.name.trim());
+
+  async function handleImport() {
+    if (filledRows.length === 0) return;
+    setImporting(true);
+    try {
+      await onImport(filledRows.map(r => ({ name: r.name.trim(), gender: r.gender })));
+      onClose();
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  return (
+    <Modal visible={visible} animationType="slide">
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#F9FAFB' }} edges={['top']}>
+        <View style={{
+          flexDirection: 'row', alignItems: 'center',
+          paddingHorizontal: 20, paddingTop: 16, paddingBottom: 12,
+          borderBottomWidth: 1, borderBottomColor: '#F3F4F6', backgroundColor: 'white',
+        }}>
+          <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Ionicons name={'close' as any} size={26} color="#374151" />
+          </TouchableOpacity>
+          <Text style={{ flex: 1, fontSize: 17, fontWeight: '700', color: '#111827', textAlign: 'center' }}>
+            Bulk Import
+          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+            <TouchableOpacity onPress={handlePasteFromClipboard} disabled={parsing} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Ionicons name={'clipboard-outline' as any} size={22} color={parsing ? '#D1D5DB' : '#2563EB'} />
+            </TouchableOpacity>
+            {parsing
+              ? <ActivityIndicator size="small" color="#2563EB" />
+              : (
+                <TouchableOpacity onPress={handleAiImport} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Ionicons name={'sparkles-outline' as any} size={22} color="#2563EB" />
+                </TouchableOpacity>
+              )}
+          </View>
+        </View>
+
+        <ScrollView
+          contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 40 }}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <Text style={{ fontSize: 14, color: '#6B7280', marginBottom: 4, lineHeight: 20 }}>
+            Enter player names below. Leave blank rows empty to skip.
+          </Text>
+          <Text style={{ fontSize: 13, color: '#9CA3AF', marginBottom: 16, lineHeight: 18 }}>
+            Try importing from clipboard or from a roster screenshot <Text style={{ fontStyle: 'italic' }}>(beta)</Text> using the icons above.
+          </Text>
+
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, paddingHorizontal: 2 }}>
+            <Text style={{ flex: 1, fontSize: 11, fontWeight: '700', color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.5 }}>Name</Text>
+            <Text style={{ width: 88, fontSize: 11, fontWeight: '700', color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.5, textAlign: 'center' }}>Gender</Text>
+            <View style={{ width: 28 }} />
+          </View>
+
+          {rows.map((row, index) => (
+            <View key={row.id} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 8 }}>
+              <TextInput
+                value={row.name}
+                onChangeText={(t) => handleTextChange(row.id, t)}
+                placeholder={`Player ${index + 1}`}
+                placeholderTextColor="#D1D5DB"
+                autoCapitalize="words"
+                autoCorrect={false}
+                returnKeyType="next"
+                style={{
+                  flex: 1, backgroundColor: 'white', borderWidth: 1, borderColor: '#E5E7EB',
+                  borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10,
+                  fontSize: 15, color: '#111827',
+                }}
+              />
+              <View style={{ flexDirection: 'row', gap: 4 }}>
+                {(['M', 'F'] as const).map((g) => (
+                  <TouchableOpacity
+                    key={g}
+                    onPress={() => updateRow(row.id, { gender: g })}
+                    style={{
+                      width: 36, height: 36, borderRadius: 8,
+                      alignItems: 'center', justifyContent: 'center',
+                      backgroundColor: row.gender === g ? (g === 'M' ? '#2563EB' : '#EC4899') : 'white',
+                      borderWidth: 1, borderColor: row.gender === g ? (g === 'M' ? '#2563EB' : '#EC4899') : '#E5E7EB',
+                    }}
+                  >
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: row.gender === g ? 'white' : '#9CA3AF' }}>{g}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <TouchableOpacity
+                onPress={() => removeRow(row.id)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons name={'close-circle-outline' as any} size={20} color="#D1D5DB" />
+              </TouchableOpacity>
+            </View>
+          ))}
+
+          {rows.length < 20 ? (
+            <TouchableOpacity
+              onPress={addRow}
+              style={{
+                flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+                paddingVertical: 13, borderWidth: 1.5, borderColor: '#E5E7EB',
+                borderRadius: 10, marginTop: 4, marginBottom: 28,
+              }}
+            >
+              <Ionicons name={'add' as any} size={18} color="#9CA3AF" />
+              <Text style={{ fontSize: 14, color: '#9CA3AF' }}>Add row ({rows.length}/20)</Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={{ marginBottom: 28 }} />
+          )}
+
+          <TouchableOpacity
+            onPress={handleImport}
+            disabled={importing || filledRows.length === 0}
+            style={{
+              backgroundColor: '#2563EB', borderRadius: 12, paddingVertical: 14,
+              alignItems: 'center', opacity: filledRows.length === 0 ? 0.4 : 1,
+            }}
+          >
+            {importing
+              ? <ActivityIndicator color="white" />
+              : <Text style={{ color: 'white', fontWeight: '700', fontSize: 16 }}>
+                  {filledRows.length > 0
+                    ? `Import ${filledRows.length} Player${filledRows.length !== 1 ? 's' : ''}`
+                    : 'Import Players'}
+                </Text>}
+          </TouchableOpacity>
+        </ScrollView>
+      </SafeAreaView>
+    </Modal>
+  );
+}
+
 // ─── Main screen ──────────────────────────────────────────────────────────────
 
 const ACTIONS = [
@@ -475,6 +715,7 @@ export default function RosterScreen() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [addPlayerOpen, setAddPlayerOpen] = useState(false);
   const [editStrategiesOpen, setEditStrategiesOpen] = useState(false);
+  const [bulkImportOpen, setBulkImportOpen] = useState(false);
 
   // Create team form state
   const [createName, setCreateName] = useState('');
@@ -494,10 +735,19 @@ export default function RosterScreen() {
   const [joinFoundTeam, setJoinFoundTeam] = useState<Team | null>(null);
   const [joinUnclaimed, setJoinUnclaimed] = useState<Player[]>([]);
   const [showJoinNewPlayer, setShowJoinNewPlayer] = useState(false);
+  const [selfProfile, setSelfProfile] = useState<{ display_name: string; gender: 'M' | 'F' } | null>(null);
+  const [selfPosPrefs, setSelfPosPrefs] = useState<PosPrefs>({});
 
   useEffect(() => {
     fetchTeamByOwner();
-    supabase.auth.getUser().then(({ data: { user } }) => setCurrentUserId(user?.id ?? null));
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setCurrentUserId(user?.id ?? null);
+      if (user) {
+        (supabase.from('profiles') as any)
+          .select('display_name, gender').eq('id', user.id).maybeSingle()
+          .then(({ data }: any) => { if (data) setSelfProfile(data); });
+      }
+    });
     migrateOutfieldPreferences().then(() => {
       // Re-fetch after migration only if a team exists
       useTeamStore.getState().team?.id &&
@@ -555,7 +805,9 @@ export default function RosterScreen() {
     }
   }
 
-  async function handleAddSelf(name: string, gender: 'M' | 'F', posPrefs: PosPrefs) {
+  async function handleAddSelf() {
+    const name = selfProfile?.display_name ?? '';
+    const gender = selfProfile?.gender ?? 'M';
     const { data: player, error } = await supabase
       .from('players')
       .insert({ team_id: team!.id, name, gender, is_active: true, user_id: currentUserId } as any)
@@ -563,7 +815,7 @@ export default function RosterScreen() {
       .single();
     if (error || !player) throw error ?? new Error('Failed to add player');
 
-    const prefRows = Object.entries(posPrefs)
+    const prefRows = Object.entries(selfPosPrefs)
       .filter(([, pref]) => pref)
       .map(([position, preference]) => ({ player_id: (player as any).id, position, preference: preference! }));
     if (prefRows.length > 0) {
@@ -572,6 +824,16 @@ export default function RosterScreen() {
 
     await fetchTeam(team!.id);
     setShowAddSelf(false);
+    setSelfPosPrefs({});
+  }
+
+  function toggleSelfPref(pos: string) {
+    setSelfPosPrefs((prev) => {
+      const cur = prev[pos] ?? null;
+      const next: 'preferred' | 'avoid' | null = !cur ? 'preferred' : cur === 'preferred' ? 'avoid' : null;
+      if (pos === 'CF') return { ...prev, LC: next, CF: next, RC: next };
+      return { ...prev, [pos]: next };
+    });
   }
 
   const myPlayer = currentUserId ? players.find((p) => p.user_id === currentUserId) ?? null : null;
@@ -587,6 +849,13 @@ export default function RosterScreen() {
     }
     await fetchTeam(team!.id);
     setEditSelfOpen(false);
+  }
+
+  async function handleBulkImport(players: { name: string; gender: 'M' | 'F' }[]) {
+    if (!team || players.length === 0) return;
+    const rows = players.map(p => ({ team_id: team.id, name: p.name, gender: p.gender, is_active: true }));
+    await (supabase.from('players') as any).insert(rows);
+    await fetchTeam(team.id);
   }
 
   async function handleAddPlayer(name: string, gender: 'M' | 'F', posPrefs: PosPrefs) {
@@ -678,21 +947,24 @@ export default function RosterScreen() {
     }
   }
 
-  async function handleJoinAsNew(name: string, gender: 'M' | 'F', posPrefs: PosPrefs) {
+  async function handleJoinAsNew() {
     const uid = currentUserId ?? (await supabase.auth.getUser()).data.user?.id;
     if (!uid || !joinFoundTeam) return;
+    const name = selfProfile?.display_name ?? '';
+    const gender = selfProfile?.gender ?? 'M';
 
     const { data: player } = await (supabase.from('players') as any)
       .insert({ team_id: joinFoundTeam.id, name, gender, is_active: true, user_id: uid })
       .select('id').single();
 
-    const prefRows = Object.entries(posPrefs)
+    const prefRows = Object.entries(selfPosPrefs)
       .filter(([, pref]) => pref)
       .map(([position, preference]) => ({ player_id: (player as any).id, position, preference: preference! }));
     if (prefRows.length > 0) {
       await (supabase.from('position_preferences') as any).insert(prefRows);
     }
     await fetchTeamByOwner();
+    setSelfPosPrefs({});
   }
 
   // ── Loading splash ─────────────────────────────────────────────────────────
@@ -723,7 +995,7 @@ export default function RosterScreen() {
             >
               <Ionicons name={'chevron-back' as any} size={26} color="#374151" />
             </TouchableOpacity>
-            <View style={{ marginBottom: 32 }}>
+            <View style={{ marginBottom: 28 }}>
               <Text style={{ fontSize: 24, fontWeight: '800', color: '#111827', marginBottom: 8 }}>
                 One more step
               </Text>
@@ -731,11 +1003,52 @@ export default function RosterScreen() {
                 Add yourself to the roster so you can be assigned to positions and batting order.
               </Text>
             </View>
-            <AddPlayerForm
-              onSubmit={handleAddSelf}
-              namePlaceholder="Your name"
-              submitLabel="Join My Team"
-            />
+            {selfProfile && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#EFF6FF', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, marginBottom: 24 }}>
+                <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: '#2563EB', alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: 'white' }}>{getInitials(selfProfile.display_name)}</Text>
+                </View>
+                <Text style={{ fontSize: 14, color: '#1D4ED8' }}>
+                  Adding <Text style={{ fontWeight: '700' }}>{selfProfile.display_name}</Text> to {createName}
+                </Text>
+              </View>
+            )}
+            <Text style={{ fontSize: 13, fontWeight: '600', color: '#374151', marginBottom: 4 }}>
+              Position Preferences <Text style={{ fontWeight: '400', color: '#9CA3AF' }}>(optional)</Text>
+            </Text>
+            <Text style={{ fontSize: 12, color: '#9CA3AF', marginBottom: 14 }}>
+              Tap once for preferred · again for avoid · again to clear
+            </Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 32 }}>
+              {POSITION_PREFS_ALL.map((pos) => {
+                const pref = selfPosPrefs[pos];
+                return (
+                  <TouchableOpacity
+                    key={pos}
+                    onPress={() => toggleSelfPref(pos)}
+                    style={{
+                      paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20,
+                      backgroundColor: pref === 'preferred' ? '#DCFCE7' : pref === 'avoid' ? '#FEE2E2' : 'white',
+                      borderWidth: 1.5,
+                      borderColor: pref === 'preferred' ? '#16A34A' : pref === 'avoid' ? '#EF4444' : '#E5E7EB',
+                    }}
+                  >
+                    <Text style={{
+                      fontSize: 14, fontWeight: '600',
+                      color: pref === 'preferred' ? '#15803D' : pref === 'avoid' ? '#DC2626' : '#9CA3AF',
+                    }}>
+                      {pos}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            <TouchableOpacity
+              onPress={handleAddSelf}
+              style={{ backgroundColor: '#2563EB', borderRadius: 12, paddingVertical: 15, alignItems: 'center' }}
+            >
+              <Text style={{ color: 'white', fontWeight: '700', fontSize: 16 }}>Join My Team</Text>
+            </TouchableOpacity>
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
@@ -897,10 +1210,56 @@ export default function RosterScreen() {
                 <View style={{ marginBottom: 28 }}>
                   <Text style={{ fontSize: 24, fontWeight: '800', color: '#111827', marginBottom: 6 }}>Add yourself</Text>
                   <Text style={{ fontSize: 15, color: '#6B7280', lineHeight: 22 }}>
-                    Enter your details to join {joinFoundTeam?.name ?? 'the team'}.
+                    You'll be added to {joinFoundTeam?.name ?? 'the team'}.
                   </Text>
                 </View>
-                <AddPlayerForm onSubmit={handleJoinAsNew} namePlaceholder="Your name" submitLabel="Join Team" resetOnSubmit={false} />
+                {selfProfile && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#EFF6FF', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, marginBottom: 24 }}>
+                    <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: '#2563EB', alignItems: 'center', justifyContent: 'center' }}>
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: 'white' }}>{getInitials(selfProfile.display_name)}</Text>
+                    </View>
+                    <Text style={{ fontSize: 14, color: '#1D4ED8' }}>
+                      Joining as <Text style={{ fontWeight: '700' }}>{selfProfile.display_name}</Text>
+                    </Text>
+                  </View>
+                )}
+                <Text style={{ fontSize: 13, fontWeight: '600', color: '#374151', marginBottom: 4 }}>
+                  Position Preferences <Text style={{ fontWeight: '400', color: '#9CA3AF' }}>(optional)</Text>
+                </Text>
+                <Text style={{ fontSize: 12, color: '#9CA3AF', marginBottom: 14 }}>
+                  Tap once for preferred · again for avoid · again to clear
+                </Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 32 }}>
+                  {POSITION_PREFS_ALL.map((pos) => {
+                    const pref = selfPosPrefs[pos];
+                    return (
+                      <TouchableOpacity
+                        key={pos}
+                        onPress={() => toggleSelfPref(pos)}
+                        style={{
+                          paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20,
+                          backgroundColor: pref === 'preferred' ? '#DCFCE7' : pref === 'avoid' ? '#FEE2E2' : 'white',
+                          borderWidth: 1.5,
+                          borderColor: pref === 'preferred' ? '#16A34A' : pref === 'avoid' ? '#EF4444' : '#E5E7EB',
+                        }}
+                      >
+                        <Text style={{
+                          fontSize: 14, fontWeight: '600',
+                          color: pref === 'preferred' ? '#15803D' : pref === 'avoid' ? '#DC2626' : '#9CA3AF',
+                        }}>
+                          {pos}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+                <TouchableOpacity
+                  onPress={handleJoinAsNew}
+                  disabled={joinLoading}
+                  style={{ backgroundColor: '#2563EB', borderRadius: 12, paddingVertical: 15, alignItems: 'center' }}
+                >
+                  {joinLoading ? <ActivityIndicator color="white" /> : <Text style={{ color: 'white', fontWeight: '700', fontSize: 16 }}>Join Team</Text>}
+                </TouchableOpacity>
               </>
             )}
 
@@ -1145,6 +1504,11 @@ export default function RosterScreen() {
         visible={editRulesOpen}
         onClose={() => setEditRulesOpen(false)}
       />
+      <BulkImportModal
+        visible={bulkImportOpen}
+        onClose={() => setBulkImportOpen(false)}
+        onImport={handleBulkImport}
+      />
       <EditStrategiesModal
         visible={editStrategiesOpen}
         onClose={() => setEditStrategiesOpen(false)}
@@ -1163,7 +1527,7 @@ export default function RosterScreen() {
         preferAbove
         items={[
           { label: 'Add Player', onPress: () => setAddPlayerOpen(true) },
-          { label: 'Copy Invite Code', onPress: handleCopyCode },
+          { label: 'Bulk Import', onPress: () => setBulkImportOpen(true) },
         ]}
       />
     </SafeAreaView>
