@@ -68,6 +68,8 @@ export default function ProfileScreen() {
       const { error } = await (supabase.from('profiles') as any)
         .update(updates).eq('id', user.id);
       if (error) throw error;
+      // Keep players rows in sync so gender-based queries stay accurate
+      await (supabase.from('players') as any).update({ gender }).eq('user_id', user.id);
       setProfile((prev) => prev ? { ...prev, ...updates } : null);
       await fetchTeamByOwner();
     } catch (e) {

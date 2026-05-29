@@ -56,23 +56,38 @@ export default function LineupsScreen() {
     const maxConsecMen  = team?.rules?.max_consecutive_male_batting ?? DEFAULT_RULES.max_consecutive_male_batting;
     const minBatters    = team?.rules?.min_players_to_play         ?? DEFAULT_RULES.min_players_to_play;
     const maxMenField   = team?.rules?.max_male_in_field            ?? DEFAULT_RULES.max_male_in_field;
+    const maxField      = team?.rules?.players_in_field             ?? DEFAULT_RULES.players_in_field;
 
     const [{ data: lineups }, { data: rosterRows }] = await Promise.all([
       (supabase.from('lineups') as any).select('id, game_id').in('game_id', gameIds),
-      (supabase.from('game_roster') as any).select('game_id').in('game_id', gameIds),
+      (supabase.from('game_roster') as any)
+        .select('game_id, players(gender, profiles(gender))')
+        .in('game_id', gameIds),
     ]);
 
-    const rosterByGame = new Set((rosterRows as any[])?.map((r: any) => r.game_id) ?? []);
+    // Build per-game attendance stats for fielder calculation
+    const rosterStatsByGame = new Map<string, { total: number; women: number }>();
+    (rosterRows as any[])?.forEach((r: any) => {
+      if (!r.players) return;
+      if (!rosterStatsByGame.has(r.game_id)) rosterStatsByGame.set(r.game_id, { total: 0, women: 0 });
+      const s = rosterStatsByGame.get(r.game_id)!;
+      s.total++;
+      if ((r.players.profiles?.gender ?? r.players.gender) === 'F') s.women++;
+    });
+
+    function gameRosterStatus(gameId: string): SlotStatus {
+      const s = rosterStatsByGame.get(gameId);
+      if (!s) return 'partial'; // no roster set up yet — show nothing
+      const fielders = Math.min(maxField, s.women + maxMenField, s.total);
+      if (s.total < minBatters) return 'empty';   // red: too few to play
+      if (fielders < maxField)  return 'warning'; // yellow: gender constraint reduces fielders
+      return 'complete';                           // green: full squad
+    }
 
     if (!lineups || (lineups as any[]).length === 0) {
       const next: Record<string, GameStatuses> = {};
       gameIds.forEach((gid) => {
-        const g = games.find((g) => g.id === gid);
-        next[gid] = {
-          roster: g?.roster_locked ? 'complete' : rosterByGame.has(gid) ? 'partial' : 'empty',
-          batting: 'empty',
-          defensive: 'empty',
-        };
+        next[gid] = { roster: gameRosterStatus(gid), batting: 'empty', defensive: 'empty' };
       });
       setGameStatuses(next);
       return;
@@ -92,8 +107,8 @@ export default function LineupsScreen() {
     ])];
     const genderMap = new Map<string, string>();
     if (playerIds.length > 0) {
-      const { data: playerData } = await (supabase.from('players') as any).select('id, gender').in('id', playerIds);
-      (playerData as any[])?.forEach((p: any) => genderMap.set(p.id, p.gender));
+      const { data: playerData } = await (supabase.from('players') as any).select('id, gender, profiles(gender)').in('id', playerIds);
+      (playerData as any[])?.forEach((p: any) => genderMap.set(p.id, p.profiles?.gender ?? p.gender));
     }
 
     const next: Record<string, GameStatuses> = {};
@@ -145,12 +160,7 @@ export default function LineupsScreen() {
         }
       }
 
-      const game = games.find((g) => g.id === game_id);
-      next[game_id] = {
-        roster: game?.roster_locked ? 'complete' : rosterByGame.has(game_id) ? 'partial' : 'empty',
-        batting,
-        defensive,
-      };
+      next[game_id] = { roster: gameRosterStatus(game_id), batting, defensive };
     });
     setGameStatuses(next);
   }
@@ -178,7 +188,7 @@ export default function LineupsScreen() {
             {games.map((game) => {
               const isSelected = selectedGame?.id === game.id;
               const statuses = gameStatuses[game.id];
-              const bothComplete = game.roster_locked && statuses?.batting === 'complete' && statuses?.defensive === 'complete';
+              const bothComplete = statuses?.batting === 'complete' && statuses?.defensive === 'complete';
               const today = new Date().toISOString().slice(0, 10);
               const isPast = game.date.slice(0, 10) < today;
               return (
@@ -240,69 +250,57 @@ export default function LineupsScreen() {
               {hasGame ? `Game on ${formatShortDate(selectedGame!.date.slice(0, 10))}` : 'Select a game above'}
             </Text>
           </View>
-          <StatusIcon status={selectedGame?.roster_locked ? 'complete' : selectedStatuses?.roster} roster />
+          <StatusIcon status={selectedStatuses?.roster} roster />
           <Ionicons name={'chevron-forward' as any} size={20} color="#D1D5DB" />
         </TouchableOpacity>
 
         {/* Batting Order */}
-        {(() => {
-          const rosterLocked = selectedGame?.roster_locked ?? false;
-          const enabled = hasGame && rosterLocked;
-          return (
-            <TouchableOpacity
-              onPress={() => enabled && router.push('/lineups/batting')}
-              activeOpacity={enabled ? 0.7 : 0.45}
-              style={{
-                backgroundColor: 'white', borderRadius: 16, padding: 20,
-                borderWidth: 1, borderColor: '#F3F4F6',
-                flexDirection: 'row', alignItems: 'center', gap: 16,
-                opacity: enabled ? 1 : 0.45,
-              }}
-            >
-              <View style={{ width: 48, height: 48, backgroundColor: '#DBEAFE', borderRadius: 12, alignItems: 'center', justifyContent: 'center' }}>
-                <Ionicons name={'list-outline' as any} size={26} color="#2563EB" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 16, fontWeight: '700', color: '#111827' }}>Batting Order</Text>
-                <Text style={{ fontSize: 13, color: '#6B7280', marginTop: 2 }}>
-                  {hasGame ? (rosterLocked ? `Game on ${formatShortDate(selectedGame!.date.slice(0, 10))}` : 'Lock the game roster first') : 'Select a game above'}
-                </Text>
-              </View>
-              <StatusIcon status={selectedStatuses?.batting} />
-              <Ionicons name={'chevron-forward' as any} size={20} color="#D1D5DB" />
-            </TouchableOpacity>
-          );
-        })()}
+        <TouchableOpacity
+          onPress={() => hasGame && router.push('/lineups/batting')}
+          activeOpacity={hasGame ? 0.7 : 1}
+          style={{
+            backgroundColor: 'white', borderRadius: 16, padding: 20,
+            borderWidth: 1, borderColor: '#F3F4F6',
+            flexDirection: 'row', alignItems: 'center', gap: 16,
+            opacity: hasGame ? 1 : 0.45,
+          }}
+        >
+          <View style={{ width: 48, height: 48, backgroundColor: '#DBEAFE', borderRadius: 12, alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name={'list-outline' as any} size={26} color="#2563EB" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 16, fontWeight: '700', color: '#111827' }}>Batting Order</Text>
+            <Text style={{ fontSize: 13, color: '#6B7280', marginTop: 2 }}>
+              {hasGame ? `Game on ${formatShortDate(selectedGame!.date.slice(0, 10))}` : 'Select a game above'}
+            </Text>
+          </View>
+          <StatusIcon status={selectedStatuses?.batting} />
+          <Ionicons name={'chevron-forward' as any} size={20} color="#D1D5DB" />
+        </TouchableOpacity>
 
         {/* Defensive Alignment */}
-        {(() => {
-          const rosterLocked = selectedGame?.roster_locked ?? false;
-          const enabled = hasGame && rosterLocked;
-          return (
-            <TouchableOpacity
-              onPress={() => enabled && router.push('/lineups/positions')}
-              activeOpacity={enabled ? 0.7 : 0.45}
-              style={{
-                backgroundColor: 'white', borderRadius: 16, padding: 20,
-                borderWidth: 1, borderColor: '#F3F4F6',
-                flexDirection: 'row', alignItems: 'center', gap: 16,
-                opacity: enabled ? 1 : 0.45,
-              }}
-            >
-              <View style={{ width: 48, height: 48, backgroundColor: '#DCFCE7', borderRadius: 12, alignItems: 'center', justifyContent: 'center' }}>
-                <Ionicons name={'grid-outline' as any} size={26} color="#16A34A" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 16, fontWeight: '700', color: '#111827' }}>Defensive Alignment</Text>
-                <Text style={{ fontSize: 13, color: '#6B7280', marginTop: 2 }}>
-                  {hasGame ? (rosterLocked ? `Game on ${formatShortDate(selectedGame!.date.slice(0, 10))}` : 'Lock the game roster first') : 'Select a game above'}
-                </Text>
-              </View>
-              <StatusIcon status={selectedStatuses?.defensive} />
-              <Ionicons name={'chevron-forward' as any} size={20} color="#D1D5DB" />
-            </TouchableOpacity>
-          );
-        })()}
+        <TouchableOpacity
+          onPress={() => hasGame && router.push('/lineups/positions')}
+          activeOpacity={hasGame ? 0.7 : 1}
+          style={{
+            backgroundColor: 'white', borderRadius: 16, padding: 20,
+            borderWidth: 1, borderColor: '#F3F4F6',
+            flexDirection: 'row', alignItems: 'center', gap: 16,
+            opacity: hasGame ? 1 : 0.45,
+          }}
+        >
+          <View style={{ width: 48, height: 48, backgroundColor: '#DCFCE7', borderRadius: 12, alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name={'grid-outline' as any} size={26} color="#16A34A" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 16, fontWeight: '700', color: '#111827' }}>Defensive Alignment</Text>
+            <Text style={{ fontSize: 13, color: '#6B7280', marginTop: 2 }}>
+              {hasGame ? `Game on ${formatShortDate(selectedGame!.date.slice(0, 10))}` : 'Select a game above'}
+            </Text>
+          </View>
+          <StatusIcon status={selectedStatuses?.defensive} />
+          <Ionicons name={'chevron-forward' as any} size={20} color="#D1D5DB" />
+        </TouchableOpacity>
 
         </View>
       </View>
@@ -314,9 +312,9 @@ export default function LineupsScreen() {
 
 function StatusIcon({ status, roster }: { status: SlotStatus | undefined; roster?: boolean }) {
   if (roster) {
-    if (status === 'complete') return <Ionicons name={'lock-closed' as any}      size={20} color="#16A34A" />;
-    if (status === 'partial')  return <Ionicons name={'lock-open-outline' as any} size={20} color="#2563EB" />;
-    if (status === 'empty')    return <Ionicons name={'lock-open-outline' as any} size={20} color="#9CA3AF" />;
+    if (status === 'complete') return <Ionicons name={'checkmark-circle' as any} size={22} color="#16A34A" />;
+    if (status === 'warning')  return <Ionicons name={'warning' as any}           size={20} color="#CA8A04" />;
+    if (status === 'empty')    return <Ionicons name={'alert-circle' as any}      size={22} color="#DC2626" />;
     return null;
   }
   if (status === 'complete') return <Ionicons name={'checkmark-circle' as any} size={22} color="#16A34A" />;

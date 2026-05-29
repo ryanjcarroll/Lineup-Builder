@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import {
-  View, Text, ScrollView, TouchableOpacity,
+  View, Text, TouchableOpacity, ScrollView,
   Alert, ActivityIndicator, Modal, TextInput,
   KeyboardAvoidingView, Platform,
 } from 'react-native';
@@ -137,7 +137,7 @@ function AddGhostForm({ onSubmit }: { onSubmit: (name: string, gender: 'M' | 'F'
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function BattingOrderScreen() {
-  const { team, players, fetchTeam, fetchTeamByOwner } = useTeamStore();
+  const { team, players, fetchTeamByOwner } = useTeamStore();
   const { activeLineupId, selectedGame } = useGameStore();
   const rules = team?.rules;
   const maxConsecMen = rules?.max_consecutive_male_batting ?? DEFAULT_RULES.max_consecutive_male_batting;
@@ -219,7 +219,6 @@ export default function BattingOrderScreen() {
         if (orders && orders.length > 0) {
           const playerMap = new Map(rosterPlayers.map((p) => [p.id, p]));
 
-          // Fetch ghost batters referenced in the saved order but not in the game roster
           const ghostIds = orders.map((o) => o.player_id).filter((id) => !playerMap.has(id));
           if (ghostIds.length > 0) {
             const { data: ghostData } = await (supabase.from('players') as any)
@@ -256,14 +255,8 @@ export default function BattingOrderScreen() {
   }
 
   function handleSlotPress(index: number) {
-    if (selectedIndex === null) {
-      setSelectedIndex(index);
-      return;
-    }
-    if (selectedIndex === index) {
-      setSelectedIndex(null);
-      return;
-    }
+    if (selectedIndex === null) { setSelectedIndex(index); return; }
+    if (selectedIndex === index) { setSelectedIndex(null); return; }
     const newSlots = [...slots];
     [newSlots[selectedIndex], newSlots[index]] = [newSlots[index], newSlots[selectedIndex]];
     setSlots(newSlots);
@@ -379,17 +372,17 @@ export default function BattingOrderScreen() {
           <ActivityIndicator size="large" color="#2563EB" />
         </View>
       ) : (
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16 }}>
+        <ScrollView contentContainerStyle={{ padding: 16 }} showsVerticalScrollIndicator={false}>
           <Text style={{ fontSize: 12, color: '#9CA3AF', textAlign: 'center', marginBottom: 12 }}>
-            Tap a player to select · tap another to swap
+            Tap to select · tap another to swap
           </Text>
 
           {slots.map((player, index) => {
-            const isSelected    = selectedIndex === index;
-            const isSwapTarget  = selectedIndex !== null && !isSelected;
-            const isViolating   = violatingIndices.has(index);
-            const isSub         = subs.some((s) => s.id === player.id);
-            const isGhost       = !!player.is_ghost;
+            const isSelected   = selectedIndex === index;
+            const isSwapTarget = selectedIndex !== null && !isSelected;
+            const isViolating  = violatingIndices.has(index);
+            const isSub        = subs.some((s) => s.id === player.id);
+            const isGhost      = !!player.is_ghost;
 
             return (
               <TouchableOpacity
@@ -406,6 +399,8 @@ export default function BattingOrderScreen() {
                 }}
               >
                 <GenderCorner gender={playerGender(player)} />
+
+                {/* Order badge */}
                 <View style={{
                   width: 32, height: 32, borderRadius: 16,
                   backgroundColor: isSelected ? '#2563EB' : isGhost ? '#EDE9FE' : isViolating ? '#FEF08A' : '#F3F4F6',
@@ -419,6 +414,7 @@ export default function BattingOrderScreen() {
                   </Text>
                 </View>
 
+                {/* Name + badges */}
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
                   <Text style={{
                     fontWeight: '600', fontSize: 16,
@@ -438,6 +434,7 @@ export default function BattingOrderScreen() {
                   )}
                 </View>
 
+                {/* Trailing icon */}
                 {isGhost && !isSelected && (
                   <TouchableOpacity
                     onPress={() => handleRemoveGhost(player.id)}
@@ -452,12 +449,15 @@ export default function BattingOrderScreen() {
                 {isSelected && (
                   <Ionicons name={'swap-vertical' as any} size={16} color="#2563EB" />
                 )}
+                {!isSelected && !isGhost && !isViolating && (
+                  <Ionicons name={'reorder-three-outline' as any} size={20} color="#D1D5DB" />
+                )}
               </TouchableOpacity>
             );
           })}
 
           {/* Ghost Batter section */}
-          <View style={{ marginTop: 24, marginBottom: 8 }}>
+          <View style={{ marginTop: 16, marginBottom: 8 }}>
             <Text style={{
               fontSize: 11, fontWeight: '700', color: '#9CA3AF',
               textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 4,

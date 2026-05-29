@@ -36,7 +36,7 @@ function getInitials(name: string): string {
 
 export default function GameRosterScreen() {
   const { players, team } = useTeamStore();
-  const { selectedGame, setRosterLocked } = useGameStore();
+  const { selectedGame } = useGameStore();
   const navigation = useNavigation();
 
   const [attending, setAttending] = useState<Set<string>>(new Set());
@@ -82,7 +82,7 @@ export default function GameRosterScreen() {
 
       let attendingIds: Set<string>;
       if (!hasExistingRoster) {
-        attendingIds = new Set(players.map((p) => p.id));
+        attendingIds = new Set();
       } else {
         attendingIds = new Set(
           rosterRows!.filter((r: any) => !r.is_guest).map((r: any) => r.player_id)
@@ -197,8 +197,6 @@ export default function GameRosterScreen() {
     );
   }
 
-  const isLocked = selectedGame?.roster_locked ?? false;
-
   const allSelected = players.length > 0 && players.every(p => attending.has(p.id));
 
   function toggleAll() {
@@ -238,50 +236,6 @@ export default function GameRosterScreen() {
       ) : (
         <ScrollView contentContainerStyle={{ paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
 
-            {/* Lock/Unlock Roster section */}
-            <Text style={{
-              fontSize: 11, fontWeight: '700', color: '#9CA3AF',
-              textTransform: 'uppercase', letterSpacing: 0.8,
-              paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8,
-            }}>
-              Lock / Unlock Roster
-            </Text>
-            {selectedGame && (
-              <View style={{
-                marginHorizontal: 16, marginBottom: 16,
-                backgroundColor: 'white', borderRadius: 12,
-                borderWidth: 1, borderColor: '#F3F4F6',
-                paddingHorizontal: 16, paddingVertical: 14,
-                flexDirection: 'row', alignItems: 'center', gap: 14,
-              }}>
-                <TouchableOpacity
-                  onPress={() => setRosterLocked(selectedGame.id, !isLocked)}
-                  activeOpacity={0.7}
-                  style={{
-                    flexDirection: 'row', alignItems: 'center', gap: 8,
-                    backgroundColor: isLocked ? '#F0FDF4' : '#EFF6FF',
-                    borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8,
-                    borderWidth: 1,
-                    borderColor: isLocked ? '#86EFAC' : '#BFDBFE',
-                  }}
-                >
-                  <Ionicons
-                    name={isLocked ? ('lock-closed' as any) : ('lock-open-outline' as any)}
-                    size={18}
-                    color={isLocked ? '#16A34A' : '#2563EB'}
-                  />
-                  <Text style={{ fontSize: 14, fontWeight: '700', color: isLocked ? '#16A34A' : '#2563EB' }}>
-                    {isLocked ? 'Unlock Roster' : 'Lock Roster'}
-                  </Text>
-                </TouchableOpacity>
-                <Text style={{ flex: 1, fontSize: 12, color: '#9CA3AF', lineHeight: 17 }}>
-                  {isLocked
-                    ? 'Roster is locked. Unlock to make changes.'
-                    : 'Lock when RSVPs are final to enable lineups.'}
-                </Text>
-              </View>
-            )}
-
             {/* Team players */}
             <View style={{ flexDirection: 'row', alignItems: 'center', paddingLeft: 16, paddingRight: 30, paddingBottom: 6 }}>
               <Text style={{ flex: 1, fontSize: 11, fontWeight: '700', color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.8 }}>
@@ -318,7 +272,7 @@ export default function GameRosterScreen() {
               {fieldersAllowed} fielders allowed{fieldersReduced ? ' (reduced)' : ''}
             </Text>
 
-            <View style={{ opacity: isLocked ? 0.4 : 1 }} pointerEvents={isLocked ? 'none' : 'auto'}>
+            <View>
               {players.map((player) => (
                 <TouchableOpacity
                   key={player.id}

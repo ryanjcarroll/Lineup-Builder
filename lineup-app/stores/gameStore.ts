@@ -12,7 +12,6 @@ interface GameStore {
   addGame: (teamId: string, date: string, opts?: { opponent?: string; startTime?: string }) => Promise<void>;
   removeGame: (gameId: string) => Promise<void>;
   selectGame: (game: Game | null) => Promise<void>;
-  setRosterLocked: (gameId: string, locked: boolean) => Promise<void>;
 }
 
 export const useGameStore = create<GameStore>((set, get) => ({
@@ -90,11 +89,4 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (!error && created) set({ activeLineupId: created.id });
   },
 
-  setRosterLocked: async (gameId: string, locked: boolean) => {
-    await (supabase.from('games') as any).update({ roster_locked: locked }).eq('id', gameId);
-    set((s) => ({
-      games: s.games.map((g) => g.id === gameId ? { ...g, roster_locked: locked } : g),
-      selectedGame: s.selectedGame?.id === gameId ? { ...s.selectedGame, roster_locked: locked } : s.selectedGame,
-    }));
-  },
 }));
