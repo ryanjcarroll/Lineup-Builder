@@ -199,6 +199,16 @@ export default function GameRosterScreen() {
 
   const isLocked = selectedGame?.roster_locked ?? false;
 
+  const allSelected = players.length > 0 && players.every(p => attending.has(p.id));
+
+  function toggleAll() {
+    if (allSelected) {
+      setAttending(new Set());
+    } else {
+      setAttending(new Set(players.map(p => p.id)));
+    }
+  }
+
   const maxField = team?.rules?.players_in_field ?? DEFAULT_RULES.players_in_field;
   const maxMenField = team?.rules?.max_male_in_field ?? DEFAULT_RULES.max_male_in_field;
   const allAttending = [...players.filter((p) => attending.has(p.id)), ...subs];
@@ -273,11 +283,19 @@ export default function GameRosterScreen() {
             )}
 
             {/* Team players */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 6 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', paddingLeft: 16, paddingRight: 30, paddingBottom: 6 }}>
               <Text style={{ flex: 1, fontSize: 11, fontWeight: '700', color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.8 }}>
                 Team RSVP
               </Text>
-              <Text style={{ fontSize: 11, fontWeight: '600', color: '#9CA3AF' }}>Attending?</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Text style={{ fontSize: 11, fontWeight: '600', color: '#9CA3AF' }}>All</Text>
+                <Switch
+                  value={allSelected}
+                  onValueChange={toggleAll}
+                  trackColor={{ false: '#E5E7EB', true: '#93C5FD' }}
+                  thumbColor={allSelected ? '#2563EB' : '#D1D5DB'}
+                />
+              </View>
             </View>
 
             {/* Attendance summary */}

@@ -6,6 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
 import { supabase } from '../../lib/supabase';
 
 const CODE_LENGTH = 6;
@@ -97,6 +98,11 @@ export default function VerifyScreen() {
           <TouchableOpacity
             activeOpacity={1}
             onPress={() => inputRef.current?.focus()}
+            onLongPress={async () => {
+              const text = await Clipboard.getStringAsync();
+              const digits = text.replace(/\D/g, '').slice(0, CODE_LENGTH);
+              if (digits) handleChange(digits);
+            }}
             style={{ flexDirection: 'row', gap: 10 }}
           >
             {Array.from({ length: CODE_LENGTH }).map((_, i) => {
@@ -130,6 +136,8 @@ export default function VerifyScreen() {
             onChangeText={handleChange}
             keyboardType="number-pad"
             maxLength={CODE_LENGTH}
+            textContentType="oneTimeCode"
+            autoComplete="one-time-code"
             autoFocus
             caretHidden
             style={{

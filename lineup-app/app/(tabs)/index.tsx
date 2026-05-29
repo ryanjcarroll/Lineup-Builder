@@ -488,45 +488,50 @@ function BulkImportModal({ visible, onClose, onImport }: {
     setRows(prev => [...prev, { id: Math.random().toString(), name: '', gender: 'M' }]);
   }
 
-  async function handleAiImport() {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission needed', 'Please allow access to your photos.');
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      quality: 0.8,
-      base64: true,
-    });
-    if (result.canceled) return;
-    const base64 = result.assets[0].base64;
-    if (!base64) return;
-
-    setParsing(true);
-    try {
-      const { data, error } = await (supabase.functions as any).invoke('parse-roster', {
-        body: { image: base64 },
-      });
-      if (error) throw error;
-      const parsed = data.players as { name: string; gender?: string }[];
-      if (!parsed?.length) {
-        Alert.alert('No players found', 'Could not extract any names from this screenshot.');
-        return;
-      }
-      setRows(() => {
-        const newRows: BulkRow[] = parsed.slice(0, 20).map((p, i) => ({
-          id: String(i),
-          name: p.name.trim(),
-          gender: p.gender === 'F' ? 'F' : 'M',
-        }));
-        return newRows;
-      });
-    } catch {
-      Alert.alert('Import failed', 'Could not parse the screenshot. The AI feature may not be set up yet.');
-    } finally {
-      setParsing(false);
-    }
+  function handleAiImport() {
+    Alert.alert(
+      'Coming Soon',
+      'AI roster import is currently in development. Use the clipboard icon to paste a list of names instead.',
+      [{ text: 'OK' }]
+    );
+    // TODO: uncomment when parse-roster edge function is deployed
+    // const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    // if (status !== 'granted') {
+    //   Alert.alert('Permission needed', 'Please allow access to your photos.');
+    //   return;
+    // }
+    // const result = await ImagePicker.launchImageLibraryAsync({
+    //   mediaTypes: ['images'],
+    //   quality: 0.8,
+    //   base64: true,
+    // });
+    // if (result.canceled) return;
+    // const base64 = result.assets[0].base64;
+    // if (!base64) return;
+    // setParsing(true);
+    // try {
+    //   const { data, error } = await (supabase.functions as any).invoke('parse-roster', {
+    //     body: { image: base64 },
+    //   });
+    //   if (error) throw error;
+    //   const parsed = data.players as { name: string; gender?: string }[];
+    //   if (!parsed?.length) {
+    //     Alert.alert('No players found', 'Could not extract any names from this screenshot.');
+    //     return;
+    //   }
+    //   setRows(() => {
+    //     const newRows: BulkRow[] = parsed.slice(0, 20).map((p, i) => ({
+    //       id: String(i),
+    //       name: p.name.trim(),
+    //       gender: p.gender === 'F' ? 'F' : 'M',
+    //     }));
+    //     return newRows;
+    //   });
+    // } catch {
+    //   Alert.alert('Import failed', 'Could not parse the screenshot. The AI feature may not be set up yet.');
+    // } finally {
+    //   setParsing(false);
+    // }
   }
 
   async function handlePasteFromClipboard() {
@@ -695,6 +700,154 @@ function BulkImportModal({ visible, onClose, onImport }: {
   );
 }
 
+// ─── Edit Ghost Player Modal ──────────────────────────────────────────────────
+
+function EditGhostPlayerModal({ visible, player, onClose, onSave }: {
+  visible: boolean;
+  player: Player | null;
+  onClose: () => void;
+  onSave: (playerId: string, name: string, gender: 'M' | 'F', posPrefs: PosPrefs) => Promise<void>;
+}) {
+  const [name, setName] = useState('');
+  const [gender, setGender] = useState<'M' | 'F'>('M');
+  const [posPrefs, setPosPrefs] = useState<PosPrefs>({});
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (visible && player) {
+      setName(player.name ?? '');
+      setGender(player.gender ?? 'M');
+      setPosPrefs(Object.fromEntries(
+        (player.position_preferences ?? []).map(p => [p.position, p.preference])
+      ) as PosPrefs);
+    }
+  }, [visible, player?.id]);
+
+  function togglePref(pos: string) {
+    setPosPrefs((prev) => {
+      const cur = prev[pos] ?? null;
+      const next: 'preferred' | 'avoid' | null = !cur ? 'preferred' : cur === 'preferred' ? 'avoid' : null;
+      if (pos === 'CF') return { ...prev, LC: next, CF: next, RC: next };
+      return { ...prev, [pos]: next };
+    });
+  }
+
+  async function handleSave() {
+    if (!player || !name.trim()) return;
+    setSaving(true);
+    try {
+      await onSave(player.id, name.trim(), gender, posPrefs);
+      onClose();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal visible={visible} animationType="slide">
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#F9FAFB' }} edges={['top']}>
+        <View style={{
+          flexDirection: 'row', alignItems: 'center',
+          paddingHorizontal: 20, paddingTop: 16, paddingBottom: 12,
+          borderBottomWidth: 1, borderBottomColor: '#F3F4F6', backgroundColor: 'white',
+        }}>
+          <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Ionicons name={'close' as any} size={26} color="#374151" />
+          </TouchableOpacity>
+          <Text style={{ flex: 1, fontSize: 17, fontWeight: '700', color: '#111827', textAlign: 'center', marginRight: 26 }}>
+            Edit Player
+          </Text>
+        </View>
+        <ScrollView
+          contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 24, paddingBottom: 40 }}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <Text style={{ fontSize: 13, fontWeight: '600', color: '#374151', marginBottom: 6 }}>Name</Text>
+          <TextInput
+            value={name}
+            onChangeText={setName}
+            placeholder="Player name"
+            placeholderTextColor="#9CA3AF"
+            autoCapitalize="words"
+            autoCorrect={false}
+            returnKeyType="done"
+            style={{
+              backgroundColor: 'white', borderWidth: 1.5, borderColor: '#E5E7EB',
+              borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14,
+              fontSize: 16, color: '#111827', marginBottom: 24,
+            }}
+          />
+
+          <Text style={{ fontSize: 13, fontWeight: '600', color: '#374151', marginBottom: 10 }}>Gender</Text>
+          <View style={{ flexDirection: 'row', gap: 10, marginBottom: 32 }}>
+            {(['M', 'F'] as const).map((g) => (
+              <TouchableOpacity
+                key={g}
+                onPress={() => setGender(g)}
+                style={{
+                  flex: 1, paddingVertical: 13, borderRadius: 12, alignItems: 'center',
+                  backgroundColor: gender === g ? (g === 'M' ? '#2563EB' : '#EC4899') : 'white',
+                  borderWidth: 1.5,
+                  borderColor: gender === g ? (g === 'M' ? '#2563EB' : '#EC4899') : '#E5E7EB',
+                }}
+              >
+                <Text style={{ fontSize: 15, fontWeight: '600', color: gender === g ? 'white' : '#6B7280' }}>
+                  {g === 'M' ? 'Male' : 'Female'}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <Text style={{ fontSize: 13, fontWeight: '600', color: '#374151', marginBottom: 4 }}>
+            Position Preferences <Text style={{ fontWeight: '400', color: '#9CA3AF' }}>(optional)</Text>
+          </Text>
+          <Text style={{ fontSize: 12, color: '#9CA3AF', marginBottom: 14 }}>
+            Tap once for preferred · again for avoid · again to clear
+          </Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 32 }}>
+            {POSITION_PREFS_ALL.map((pos) => {
+              const pref = posPrefs[pos];
+              return (
+                <TouchableOpacity
+                  key={pos}
+                  onPress={() => togglePref(pos)}
+                  style={{
+                    paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20,
+                    backgroundColor: pref === 'preferred' ? '#DCFCE7' : pref === 'avoid' ? '#FEE2E2' : 'white',
+                    borderWidth: 1.5,
+                    borderColor: pref === 'preferred' ? '#16A34A' : pref === 'avoid' ? '#EF4444' : '#E5E7EB',
+                  }}
+                >
+                  <Text style={{
+                    fontSize: 14, fontWeight: '600',
+                    color: pref === 'preferred' ? '#15803D' : pref === 'avoid' ? '#DC2626' : '#9CA3AF',
+                  }}>
+                    {pos}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <TouchableOpacity
+            onPress={handleSave}
+            disabled={saving || !name.trim()}
+            style={{
+              backgroundColor: '#2563EB', borderRadius: 12, paddingVertical: 14,
+              alignItems: 'center', opacity: !name.trim() ? 0.4 : 1,
+            }}
+          >
+            {saving
+              ? <ActivityIndicator color="white" />
+              : <Text style={{ color: 'white', fontWeight: '700', fontSize: 16 }}>Save Changes</Text>}
+          </TouchableOpacity>
+        </ScrollView>
+      </SafeAreaView>
+    </Modal>
+  );
+}
+
 // ─── Main screen ──────────────────────────────────────────────────────────────
 
 const ACTIONS = [
@@ -723,6 +876,7 @@ export default function RosterScreen() {
   const [creating, setCreating] = useState(false);
   const [showAddSelf, setShowAddSelf] = useState(false);
   const [editSelfOpen, setEditSelfOpen] = useState(false);
+  const [editGhostPlayer, setEditGhostPlayer] = useState<Player | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [codeCopied, setCodeCopied] = useState(false);
 
@@ -765,6 +919,18 @@ export default function RosterScreen() {
     setSelectedIds(new Set());
   }, [team?.id]);
 
+  // Reset onboarding flow when team is removed (leave/delete)
+  useEffect(() => {
+    if (!team) {
+      setOnboardingView('fork');
+      setJoinFoundTeam(null);
+      setJoinUnclaimed([]);
+      setShowJoinNewPlayer(false);
+      setInviteInput('');
+      setJoinError(null);
+    }
+  }, [team?.id]);
+
   // Reset selection mode when the user navigates away from this tab
   useFocusEffect(
     useCallback(() => {
@@ -785,6 +951,7 @@ export default function RosterScreen() {
   const maleCount   = players.filter((p) => p.gender === 'M').length;
   const femaleCount = players.filter((p) => p.gender === 'F').length;
   const avatarColor = team ? getAvatarColor(team.name) : '#3B82F6';
+  const amICaptain  = !!currentUserId && team?.owner_id === currentUserId;
 
   function handleAction(label: string) {
     if (label === 'Rules') setEditRulesOpen(true);
@@ -849,6 +1016,16 @@ export default function RosterScreen() {
     }
     await fetchTeam(team!.id);
     setEditSelfOpen(false);
+  }
+
+  async function handleSaveGhostPlayer(playerId: string, name: string, gender: 'M' | 'F', posPrefs: PosPrefs) {
+    await (supabase.from('players') as any).update({ name, gender }).eq('id', playerId);
+    await (supabase.from('position_preferences') as any).delete().eq('player_id', playerId);
+    const prefRows = Object.entries(posPrefs)
+      .filter(([, pref]) => pref)
+      .map(([position, preference]) => ({ player_id: playerId, position, preference: preference! }));
+    if (prefRows.length > 0) await (supabase.from('position_preferences') as any).insert(prefRows);
+    await fetchTeam(team!.id);
   }
 
   async function handleBulkImport(players: { name: string; gender: 'M' | 'F' }[]) {
@@ -1443,7 +1620,7 @@ export default function RosterScreen() {
                   player={player}
                   isCaptain={isCaptain}
                   isMe={isMe}
-                  onEdit={isMe ? () => setEditSelfOpen(true) : undefined}
+                  onEdit={isMe ? () => setEditSelfOpen(true) : (amICaptain && !player.user_id) ? () => setEditGhostPlayer(player) : undefined}
                 />
               );
             })}
@@ -1508,6 +1685,12 @@ export default function RosterScreen() {
         visible={bulkImportOpen}
         onClose={() => setBulkImportOpen(false)}
         onImport={handleBulkImport}
+      />
+      <EditGhostPlayerModal
+        visible={editGhostPlayer !== null}
+        player={editGhostPlayer}
+        onClose={() => setEditGhostPlayer(null)}
+        onSave={handleSaveGhostPlayer}
       />
       <EditStrategiesModal
         visible={editStrategiesOpen}

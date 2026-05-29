@@ -583,13 +583,16 @@ export default function PositionsScreen() {
         {/* Scrollable rows */}
         <ScrollView showsVerticalScrollIndicator={false}>
           {sortedPlayers.map((player, idx) => {
-            const isRowSelected = player.id === selectedPlayerId;
-            const isLast       = idx === sortedPlayers.length - 1;
-            const prefForPos   = selectedPos
+            const isRowSelected        = player.id === selectedPlayerId;
+            const isLast               = idx === sortedPlayers.length - 1;
+            const prefForPos           = selectedPos
               ? player.position_preferences?.find(pp => pp.position === selectedPos)?.preference
               : null;
+            const isAssignedThisInning = getPlayerPosition(player.id, currentInning) !== null;
+            const isDisabled           = isAssignedThisInning && !isRowSelected;
             const rowBg = isRowSelected
               ? '#EFF6FF'
+              : isAssignedThisInning ? '#F9FAFB'
               : prefForPos === 'preferred' ? '#bcf5cf'
               : prefForPos === 'avoid'     ? '#FFF1F2'
               : undefined;
@@ -597,9 +600,9 @@ export default function PositionsScreen() {
             return (
               <TouchableOpacity
                 key={player.id}
-                onPress={() => handleRowPress(player)}
-                activeOpacity={0.6}
-                style={rowBg ? { backgroundColor: rowBg } : undefined}
+                onPress={() => { if (!isDisabled) handleRowPress(player); }}
+                activeOpacity={isDisabled ? 0.4 : 0.6}
+                style={{ backgroundColor: rowBg, opacity: isDisabled ? 0.4 : 1 }}
                 className={`flex-row items-center ${!isLast ? 'border-b border-gray-50' : ''}`}
               >
                 <View style={{ width: NAME_COL_W, overflow: 'hidden' }} className="flex-row items-center gap-1 px-3 py-2.5">
