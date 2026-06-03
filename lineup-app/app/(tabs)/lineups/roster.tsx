@@ -1,13 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, Switch, ScrollView, Modal,
-  Alert, ActivityIndicator, KeyboardAvoidingView, Platform,
+  Alert, ActivityIndicator, KeyboardAvoidingView, Platform, Image,
 } from 'react-native';
 import { Stack, useNavigation } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import AddPlayerForm, { PosPrefs } from '../../../components/AddPlayerForm';
-import GenderCorner from '../../../components/GenderCorner';
 import { useTeamStore } from '../../../stores/teamStore';
 import { useGameStore } from '../../../stores/gameStore';
 import { supabase } from '../../../lib/supabase';
@@ -284,17 +283,23 @@ export default function GameRosterScreen() {
                     marginHorizontal: 16, marginBottom: 6,
                     borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10,
                     borderWidth: 1, borderColor: '#F3F4F6', overflow: 'hidden',
+                    borderLeftWidth: 4,
+                    borderLeftColor: playerGender(player) === 'M' ? '#3B82F6' : '#EC4899',
                   }}
                 >
-                  <GenderCorner gender={playerGender(player)} />
                   <View style={{
                     width: 34, height: 34, borderRadius: 17,
                     backgroundColor: getAvatarColor(playerName(player)),
                     alignItems: 'center', justifyContent: 'center', marginRight: 12,
+                    overflow: 'hidden',
                   }}>
-                    <Text style={{ fontSize: 12, fontWeight: '700', color: 'white' }}>
-                      {getInitials(playerName(player))}
-                    </Text>
+                    {player.profile?.photo_url ? (
+                      <Image source={{ uri: player.profile.photo_url }} style={{ width: 34, height: 34 }} />
+                    ) : (
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: 'white' }}>
+                        {getInitials(playerName(player))}
+                      </Text>
+                    )}
                   </View>
                   <Text style={{ flex: 1, fontSize: 15, fontWeight: '600', color: '#111827' }}>
                     {playerName(player)}
@@ -329,8 +334,9 @@ export default function GameRosterScreen() {
                     marginHorizontal: 16, marginBottom: 6,
                     borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10,
                     borderWidth: 1, borderColor: '#F3F4F6', overflow: 'hidden',
+                    borderLeftWidth: 4,
+                    borderLeftColor: playerGender(sub) === 'M' ? '#3B82F6' : '#EC4899',
                   }}>
-                    <GenderCorner gender={playerGender(sub)} />
                     <View style={{
                       width: 34, height: 34, borderRadius: 17,
                       backgroundColor: getAvatarColor(playerName(sub)),

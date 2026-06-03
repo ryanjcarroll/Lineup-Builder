@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity } from 'react-native';
+import { View, Text, TouchableOpacity, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Player, playerName, playerGender } from '../types/database';
 import GenderCorner from './GenderCorner';
@@ -9,6 +9,8 @@ interface Props {
   isCaptain?: boolean;
   isMe?: boolean;
   isSelected?: boolean;
+  genderBorder?: boolean;
+  photoUrl?: string | null;
 }
 
 const AVATAR_COLORS = [
@@ -43,7 +45,9 @@ function getAvatarColor(name: string) {
   return AVATAR_COLORS[hash % AVATAR_COLORS.length];
 }
 
-export default function PlayerCard({ player, onEdit, isCaptain, isMe, isSelected }: Props) {
+const GENDER_BORDER_COLORS = { M: '#3B82F6', F: '#EC4899' } as const;
+
+export default function PlayerCard({ player, onEdit, isCaptain, isMe, isSelected, genderBorder, photoUrl }: Props) {
   const POSITION_ORDER = ['P', 'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF'];
   const sortByOrder = (a: string, b: string) => POSITION_ORDER.indexOf(a) - POSITION_ORDER.indexOf(b);
   const prefs = (player.position_preferences ?? []).filter((p) => p.position !== 'LC' && p.position !== 'RC');
@@ -56,19 +60,26 @@ export default function PlayerCard({ player, onEdit, isCaptain, isMe, isSelected
 
   return (
     // Outer View carries shadow; inner View clips triangle to border radius
-    <View className="bg-white rounded-xl mx-4 mb-3 shadow-sm" style={{ borderWidth: isSelected ? 2 : 1, borderColor: isSelected ? '#2563EB' : '#F3F4F6' }}>
+    <View className="bg-white rounded-xl mx-4 mb-3 shadow-sm" style={{
+      borderWidth: isSelected ? 2 : 1,
+      borderColor: isSelected ? '#2563EB' : '#F3F4F6',
+      ...(genderBorder && !isSelected ? { borderLeftWidth: 4, borderLeftColor: GENDER_BORDER_COLORS[displayGender] } : {}),
+    }}>
       <View style={{ borderRadius: isSelected ? 11 : 12, overflow: 'hidden', backgroundColor: isSelected ? '#EFF6FF' : 'white' }}>
-        <GenderCorner gender={displayGender} size={21} />
+        {!genderBorder && <GenderCorner gender={displayGender} size={21} />}
         <View className="flex-row items-start px-4 pt-4 pb-3">
           <View style={{
             width: 44, height: 44, borderRadius: 22,
             backgroundColor: isSelected ? '#2563EB' : (isUnlinked ? '#F3F4F6' : bg),
             alignItems: 'center', justifyContent: 'center',
             marginRight: 12, flexShrink: 0,
+            overflow: 'hidden',
             ...(isUnlinked && !isSelected ? { borderWidth: 1.5, borderStyle: 'dashed', borderColor: '#9CA3AF' } : {}),
           }}>
             {isSelected ? (
               <Ionicons name={'checkmark' as any} size={22} color="white" />
+            ) : photoUrl ? (
+              <Image source={{ uri: photoUrl }} style={{ width: 44, height: 44, borderRadius: 22 }} />
             ) : (
               <Text style={{ fontSize: 16, fontWeight: '700', color: isUnlinked ? '#9CA3AF' : text }}>
                 {getInitials(displayName)}

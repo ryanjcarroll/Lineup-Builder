@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, Alert, ActivityIndicator, TextInput } from 'react-native';
+import { View, Text, TouchableOpacity, Alert, ActivityIndicator, TextInput, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { User } from '@supabase/supabase-js';
+import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../../../lib/supabase';
 import { Profile, Gender } from '../../../types/database';
 import { useTeamStore } from '../../../stores/teamStore';
@@ -32,6 +33,8 @@ export default function ProfileScreen() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [displayName, setDisplayName] = useState('');
   const [gender, setGender] = useState<Gender>('M');
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
@@ -50,6 +53,7 @@ export default function ProfileScreen() {
         setProfile(data);
         setDisplayName(data.display_name ?? '');
         setGender(data.gender ?? 'M');
+        setPhotoUrl(data.photo_url ?? null);
       }
       setLoading(false);
     }
@@ -59,6 +63,39 @@ export default function ProfileScreen() {
   const isDirty = profile
     ? displayName !== (profile.display_name ?? '') || gender !== (profile.gender ?? 'M')
     : displayName !== '' || gender !== 'M';
+
+  async function handlePickPhoto() {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission needed', 'Please allow access to your photo library in Settings.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+      base64: true,
+    });
+    if (result.canceled) return;
+    const asset = result.assets[0];
+    if (!asset.base64) return;
+    setUploading(true);
+    try {
+      const mime = asset.uri.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
+      const dataUrl = `data:${mime};base64,${asset.base64}`;
+      const { error } = await (supabase.from('profiles') as any)
+        .update({ photo_url: dataUrl })
+        .eq('id', user!.id);
+      if (error) throw error;
+      setPhotoUrl(dataUrl);
+      setProfile((prev) => prev ? { ...prev, photo_url: dataUrl } : null);
+    } catch (e) {
+      Alert.alert('Upload failed', (e as any)?.message ?? 'Could not save photo.');
+    } finally {
+      setUploading(false);
+    }
+  }
 
   async function handleSave() {
     if (!user || !displayName.trim()) return;
@@ -111,16 +148,31 @@ export default function ProfileScreen() {
 
           {/* Avatar */}
           <View style={{ alignItems: 'center', paddingTop: 36, paddingBottom: 28 }}>
-            <View style={{
-              width: 84, height: 84, borderRadius: 42,
-              backgroundColor: avatarColor,
-              alignItems: 'center', justifyContent: 'center',
-              marginBottom: 12,
-            }}>
-              <Text style={{ fontSize: 30, fontWeight: '800', color: 'white' }}>
-                {avatarLabel}
-              </Text>
-            </View>
+            <TouchableOpacity onPress={handlePickPhoto} disabled={uploading} style={{ position: 'relative', marginBottom: 12 }}>
+              {photoUrl ? (
+                <Image source={{ uri: photoUrl }} style={{ width: 84, height: 84, borderRadius: 42 }} />
+              ) : (
+                <View style={{
+                  width: 84, height: 84, borderRadius: 42,
+                  backgroundColor: avatarColor,
+                  alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <Text style={{ fontSize: 30, fontWeight: '800', color: 'white' }}>
+                    {avatarLabel}
+                  </Text>
+                </View>
+              )}
+              <View style={{
+                position: 'absolute', bottom: 0, right: 0,
+                width: 26, height: 26, borderRadius: 13,
+                backgroundColor: '#2563EB', borderWidth: 2, borderColor: '#F3F4F6',
+                alignItems: 'center', justifyContent: 'center',
+              }}>
+                {uploading
+                  ? <ActivityIndicator size="small" color="white" />
+                  : <Ionicons name={'camera' as any} size={13} color="white" />}
+              </View>
+            </TouchableOpacity>
             {displayName.trim() ? (
               <Text style={{ fontSize: 17, fontWeight: '700', color: '#111827', marginBottom: 2 }}>
                 {displayName.trim()}

@@ -595,7 +595,7 @@ export default function PositionsScreen() {
               : isAssignedThisInning ? '#F9FAFB'
               : prefForPos === 'preferred' ? '#bcf5cf'
               : prefForPos === 'avoid'     ? '#FFF1F2'
-              : undefined;
+              : 'white';
 
             return (
               <TouchableOpacity

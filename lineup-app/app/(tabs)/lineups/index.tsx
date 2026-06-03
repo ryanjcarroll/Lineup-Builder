@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useGameStore } from '../../../stores/gameStore';
 import { useTeamStore } from '../../../stores/teamStore';
-import EditRulesModal, { DEFAULT_RULES } from '../../../components/EditRulesModal';
+import { DEFAULT_RULES } from '../../../components/EditRulesModal';
 import { supabase } from '../../../lib/supabase';
 
 
@@ -39,7 +39,6 @@ export default function LineupsScreen() {
   const { games, selectedGame, activeLineupId, loading, fetchGames, selectGame } = useGameStore();
   const { team, fetchTeam, fetchTeamByOwner } = useTeamStore();
   const [gameStatuses, setGameStatuses] = useState<Record<string, GameStatuses>>({});
-  const [rulesOpen, setRulesOpen] = useState(false);
 
   useFocusEffect(useCallback(() => { if (team?.id) fetchGames(team.id); }, [team?.id]));
   useFocusEffect(useCallback(() => { if (team?.id) fetchTeam(team.id); else fetchTeamByOwner(); }, [team?.id]));
@@ -221,15 +220,6 @@ export default function LineupsScreen() {
       <View style={{ flex: 1, paddingHorizontal: 16 }}>
         <View style={{ flex: 1, justifyContent: 'center', gap: 12 }}>
 
-        {/* Rules cogwheel */}
-        <TouchableOpacity
-          onPress={() => setRulesOpen(true)}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          style={{ alignSelf: 'flex-start', padding: 4, marginBottom: -4 }}
-        >
-          <Ionicons name={'settings-outline' as any} size={20} color="#9CA3AF" />
-        </TouchableOpacity>
-
         {/* Game Roster */}
         <TouchableOpacity
           onPress={() => hasGame && router.push('/lineups/roster')}
@@ -305,7 +295,6 @@ export default function LineupsScreen() {
         </View>
       </View>
 
-      <EditRulesModal visible={rulesOpen} onClose={() => setRulesOpen(false)} />
     </SafeAreaView>
   );
 }

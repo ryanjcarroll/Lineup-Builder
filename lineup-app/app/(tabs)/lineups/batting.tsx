@@ -7,7 +7,6 @@ import {
 import { Stack, useNavigation } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import GenderCorner from '../../../components/GenderCorner';
 import { useTeamStore } from '../../../stores/teamStore';
 import { useGameStore } from '../../../stores/gameStore';
 import { DEFAULT_RULES } from '../../../components/EditRulesModal';
@@ -396,10 +395,9 @@ export default function BattingOrderScreen() {
                   borderWidth: 1.5,
                   borderColor: isSelected ? '#3B82F6' : isSwapTarget ? '#93C5FD' : isGhost ? '#C4B5FD' : isViolating ? '#FDE68A' : '#F3F4F6',
                   ...(isSwapTarget ? { borderStyle: 'dashed' } : {}),
+                  ...(!isSelected && !isSwapTarget ? { borderLeftWidth: 4, borderLeftColor: playerGender(player) === 'M' ? '#3B82F6' : '#EC4899' } : {}),
                 }}
               >
-                <GenderCorner gender={playerGender(player)} />
-
                 {/* Order badge */}
                 <View style={{
                   width: 32, height: 32, borderRadius: 16,

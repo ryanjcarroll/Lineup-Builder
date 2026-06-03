@@ -1583,6 +1583,7 @@ export default function RosterScreen() {
               const isSelected = selectedIds.has(player.id);
               const isCaptain = player.user_id === team.owner_id;
               const isMe = !!currentUserId && player.user_id === currentUserId;
+              const photoUrl = player.profile?.photo_url ?? undefined;
               if (selectionMode) {
                 if (isCaptain && isMe) {
                   return (
@@ -1591,6 +1592,8 @@ export default function RosterScreen() {
                       player={player}
                       isCaptain={isCaptain}
                       isMe={isMe}
+                      genderBorder
+                      photoUrl={photoUrl}
                     />
                   );
                 }
@@ -1610,6 +1613,8 @@ export default function RosterScreen() {
                       isCaptain={isCaptain}
                       isMe={isMe}
                       isSelected={isSelected}
+                      genderBorder
+                      photoUrl={photoUrl}
                     />
                   </TouchableOpacity>
                 );
@@ -1621,6 +1626,8 @@ export default function RosterScreen() {
                   isCaptain={isCaptain}
                   isMe={isMe}
                   onEdit={isMe ? () => setEditSelfOpen(true) : (amICaptain && !player.user_id) ? () => setEditGhostPlayer(player) : undefined}
+                  genderBorder
+                  photoUrl={photoUrl}
                 />
               );
             })}

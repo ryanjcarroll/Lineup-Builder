@@ -52,3 +52,4 @@ yarn-error.*
 .DS_Store
 Thumbs.db
 desktop.ini
+lineup-app/app/(tabs)/lineups/TODO.md
