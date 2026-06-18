@@ -32,3 +32,11 @@ These have been written but not yet applied:
 - `20260527_add_invite_code.sql` — adds `invite_code` to teams
 - `20260527_join_team_rls.sql` — opens teams SELECT to all authenticated users
 - `20260527_add_team_delete_policy.sql` — allows team owners to delete their own teams
+
+
+## NOTE
+One possible idea for the Defense Flow:
+    - Revert back to cards for remaining players below the field area
+    - Have an eyeball icon in the top which pulls up the table view, with a toggle to see it by player or by position
+    - Maybe the six-fields interface is actually easier to use for lineup-setting?
+        - Maybe show the six fields and let them click into each one? Better than an inning number selector?

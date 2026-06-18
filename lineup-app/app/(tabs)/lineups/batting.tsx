@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView,
   Alert, ActivityIndicator, Modal, TextInput,
-  KeyboardAvoidingView, Platform, Image,
+  KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { Stack, useNavigation } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -130,24 +130,6 @@ function AddGhostForm({ onSubmit }: { onSubmit: (name: string, gender: 'M' | 'F'
           : <Text style={{ color: 'white', fontWeight: '700', fontSize: 16 }}>Add Ghost Batter</Text>}
       </TouchableOpacity>
     </>
-  );
-}
-
-// ─── Avatar ───────────────────────────────────────────────────────────────────
-
-function PlayerAvatar({ player, size = 36 }: { player: Player; size?: number }) {
-  const photo = player.profile?.photo_url;
-  const gender = playerGender(player);
-  const bg = gender === 'M' ? '#DBEAFE' : '#FCE7F3';
-  const textColor = gender === 'M' ? '#1D4ED8' : '#BE185D';
-  const initials = playerName(player).split(' ').filter(Boolean).map((w: string) => w[0]).slice(0, 2).join('').toUpperCase();
-  return (
-    <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: bg, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-      {photo
-        ? <Image source={{ uri: photo }} style={{ width: size, height: size }} />
-        : <Text style={{ fontSize: Math.round(size * 0.38), fontWeight: '700', color: textColor }}>{initials}</Text>
-      }
-    </View>
   );
 }
 
@@ -423,19 +405,22 @@ export default function BattingOrderScreen() {
                   style={{
                     flex: 1, flexDirection: 'row', alignItems: 'center',
                     backgroundColor: isSelected ? '#EFF6FF' : isGhost ? '#F5F3FF' : isViolating ? '#FEFCE8' : 'white',
-                    borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10,
+                    borderRadius: 12,
                     borderWidth: 1.5,
-                    borderLeftWidth: isSwapTarget ? 1.5 : 4,
+                    borderStyle: isSwapTarget ? 'dashed' : 'solid',
                     borderColor: isSelected ? '#3B82F6' : isSwapTarget ? '#93C5FD' : isGhost ? '#C4B5FD' : isViolating ? '#FDE68A' : '#F3F4F6',
-                    borderLeftColor: playerGender(player) === 'M' ? '#3B82F6' : '#EC4899',
-                    ...(isSwapTarget ? { borderStyle: 'dashed' } : {}),
+                    paddingRight: 12,
                   }}
                 >
-                  {/* Avatar */}
-                  <PlayerAvatar player={player} size={36} />
+                  {/* Gender color bar — no padding on card so this fills full height */}
+                  <View style={{
+                    width: 4, alignSelf: 'stretch',
+                    backgroundColor: playerGender(player) === 'M' ? '#3B82F6' : '#EC4899',
+                    borderTopLeftRadius: 10, borderBottomLeftRadius: 10,
+                  }} />
 
                   {/* Name + badges */}
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, marginLeft: 10 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, paddingVertical: 12, paddingLeft: 12 }}>
                     <Text style={{
                       fontWeight: '600', fontSize: 16,
                       color: isSelected ? '#1D4ED8' : isGhost ? '#6D28D9' : isViolating ? '#854D0E' : '#111827',

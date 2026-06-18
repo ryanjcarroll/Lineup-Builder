@@ -102,16 +102,8 @@ export default function LineupsScreen() {
       (supabase.from('lineup_slots') as any).select('lineup_id, inning, position, player_id').in('lineup_id', lineupIds),
     ]);
 
-    // Fetch genders for all players referenced in batting/slots
-    const playerIds = [...new Set([
-      ...((battingRows as any[])?.map((r: any) => r.player_id) ?? []),
-      ...((slotRows as any[])?.map((r: any) => r.player_id) ?? []),
-    ])];
-    const genderMap = new Map<string, string>();
-    if (playerIds.length > 0) {
-      const { data: playerData } = await (supabase.from('players') as any).select('id, gender, profiles(gender)').in('id', playerIds);
-      (playerData as any[])?.forEach((p: any) => genderMap.set(p.id, p.profiles?.gender ?? p.gender));
-    }
+    // Use store players (already resolved: profile gender wins over player gender)
+    const genderMap = new Map<string, string>(teamPlayers.map((p) => [p.id, playerGender(p)]));
 
     const next: Record<string, GameStatuses> = {};
     (lineups as any[]).forEach(({ id: lineupId, game_id }: any) => {

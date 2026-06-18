@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   useWindowDimensions, View, Text, ScrollView,
   TouchableOpacity, Alert, ActivityIndicator,
@@ -55,8 +55,9 @@ function shortName(name: string, allNames: string[]): string {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type BatterRow = { name: string; gender: 'M' | 'F' };
-type InningSlots = Record<string, string>; // position key → short name
+type BatterRow = { id: string; name: string; gender: 'M' | 'F' };
+type SlotData   = { display: string; playerId: string };
+type InningSlots = Record<string, SlotData>; // position key → { display, playerId }
 
 // ─── Mini diamond SVG ─────────────────────────────────────────────────────────
 
@@ -74,7 +75,7 @@ const FIELD_POS = [
   { key: 'C',  fx: 0.50, fy: 0.93 },
 ] as const;
 
-function InningDiamond({ slots, w, h, id }: { slots: InningSlots; w: number; h: number; id: string }) {
+function InningDiamond({ slots, w, h, id, selectedPlayerId }: { slots: InningSlots; w: number; h: number; id: string; selectedPlayerId?: string | null }) {
   const cx = w / 2;
   const homeY  = h * 0.87;
   const d      = h * 0.185;
@@ -117,21 +118,32 @@ function InningDiamond({ slots, w, h, id }: { slots: InningSlots; w: number; h: 
       />
       <SvgPolygon points={diamondPts} fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth={0.8} />
       {FIELD_POS.map(({ key, fx, fy }) => {
-        const label = slots[key];
-        if (!label) return null;
+        const slot = slots[key];
+        if (!slot) return null;
+        const highlighted = selectedPlayerId != null && slot.playerId === selectedPlayerId;
+        const tx = fx * w;
+        const ty = fy * h + 3;
+        const hlW = slot.display.length * 5.5 + 10;
         return (
-          <SvgText
-            key={key}
-            x={fx * w}
-            y={fy * h + 3}
-            textAnchor="middle"
-            fill="white"
-            fontSize={9}
-            fontWeight="700"
-            opacity={0.95}
-          >
-            {label}
-          </SvgText>
+          <React.Fragment key={key}>
+            {highlighted && (
+              <SvgRect
+                x={tx - hlW / 2} y={ty - 9}
+                width={hlW} height={13}
+                rx={3} fill="#2563EB"
+              />
+            )}
+            <SvgText
+              x={tx} y={ty}
+              textAnchor="middle"
+              fill="white"
+              fontSize={9}
+              fontWeight="700"
+              opacity={highlighted ? 1 : 0.6}
+            >
+              {slot.display}
+            </SvgText>
+          </React.Fragment>
         );
       })}
     </Svg>
@@ -147,9 +159,11 @@ interface CardProps {
   dateLabel: string;
   batting: BatterRow[];
   innings: InningSlots[];
+  selectedPlayerId: string | null;
+  onSelectPlayer: (id: string | null) => void;
 }
 
-function LineupShareCard({ cardWidth, teamName, opponent, dateLabel, batting, innings }: CardProps) {
+function LineupShareCard({ cardWidth, teamName, opponent, dateLabel, batting, innings, selectedPlayerId, onSelectPlayer }: CardProps) {
   const pad   = 16;
   const inner = cardWidth - pad * 2;
   const half  = Math.ceil(batting.length / 2);
@@ -162,11 +176,8 @@ function LineupShareCard({ cardWidth, teamName, opponent, dateLabel, batting, in
     <View style={{ width: cardWidth, backgroundColor: C.bg }} collapsable={false}>
 
       {/* Header */}
-      <View style={{ paddingTop: 28, paddingHorizontal: pad, paddingBottom: 20, borderBottomWidth: 1, borderBottomColor: C.border }}>
-        <Text style={{ fontSize: 10, fontWeight: '700', color: C.accent, letterSpacing: 1.8, textTransform: 'uppercase', marginBottom: 8 }}>
-          Game Lineup
-        </Text>
-        <Text style={{ fontSize: 28, fontWeight: '800', color: C.text, letterSpacing: -0.5, marginBottom: 4 }}>
+      <View style={{ paddingTop: 20, paddingHorizontal: pad, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: C.border }}>
+        <Text style={{ fontSize: 22, fontWeight: '800', color: C.text, letterSpacing: -0.5, marginBottom: 4 }}>
           {teamName}
         </Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -193,23 +204,24 @@ function LineupShareCard({ cardWidth, teamName, opponent, dateLabel, batting, in
               <View key={ci} style={{ flex: 1, gap: 5 }}>
                 {col.map((p, i) => {
                   const num = ci === 0 ? i + 1 : half + i + 1;
+                  const isSelected = selectedPlayerId === p.id;
                   return (
-                    <View key={num} style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+                    <TouchableOpacity key={num} onPress={() => onSelectPlayer(isSelected ? null : p.id)} activeOpacity={0.7} style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
                       <Text style={{ fontSize: 11, fontWeight: '700', color: C.muted, width: 14, textAlign: 'right', opacity: 0.8 }}>
                         {num}
                       </Text>
                       <View style={{
                         flex: 1, flexDirection: 'row', alignItems: 'center',
-                        backgroundColor: C.surface, borderRadius: 7,
+                        backgroundColor: isSelected ? '#2563EB' : C.surface, borderRadius: 7,
                         paddingVertical: 6, paddingHorizontal: 9,
                         borderLeftWidth: 3,
-                        borderLeftColor: p.gender === 'M' ? C.male : C.female,
+                        borderLeftColor: isSelected ? 'white' : (p.gender === 'M' ? C.male : C.female),
                       }}>
-                        <Text style={{ fontSize: 12, fontWeight: '600', color: C.text }} numberOfLines={1}>
+                        <Text style={{ fontSize: 12, fontWeight: '600', color: 'white' }} numberOfLines={1}>
                           {p.name}
                         </Text>
                       </View>
-                    </View>
+                    </TouchableOpacity>
                   );
                 })}
               </View>
@@ -239,7 +251,7 @@ function LineupShareCard({ cardWidth, teamName, opponent, dateLabel, batting, in
                         Inning {start + j + 1}
                       </Text>
                     </View>
-                    <InningDiamond slots={inning} w={dW} h={dH} id={`i${start + j}`} />
+                    <InningDiamond slots={inning} w={dW} h={dH} id={`i${start + j}`} selectedPlayerId={selectedPlayerId} />
                   </View>
                 ))}
               </View>
@@ -268,6 +280,7 @@ export default function SharePreviewScreen() {
   const { selectedGame, activeLineupId } = useGameStore();
   const [batting, setBatting] = useState<BatterRow[]>([]);
   const [innings, setInnings] = useState<InningSlots[]>([]);
+  const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [capturing, setCapturing] = useState(false);
   const cardRef = useRef<View>(null);
@@ -314,7 +327,7 @@ export default function SharePreviewScreen() {
       const batt: BatterRow[] = [];
       for (const row of (battingRows as any[]) ?? []) {
         const p = playerMap.get(row.player_id);
-        if (p) batt.push({ name: playerName(p), gender: playerGender(p) });
+        if (p) batt.push({ id: p.id, name: playerName(p), gender: playerGender(p) });
       }
       setBatting(batt);
 
@@ -327,7 +340,7 @@ export default function SharePreviewScreen() {
         const p = playerMap.get(row.player_id);
         if (!p) continue;
         if (!innMap[row.inning]) innMap[row.inning] = {};
-        innMap[row.inning][row.position] = shortName(playerName(p), allNames);
+        innMap[row.inning][row.position] = { display: shortName(playerName(p), allNames), playerId: p.id };
       }
       setInnings([1, 2, 3, 4, 5, 6].map((i) => innMap[i] ?? {}));
       setLoading(false);
@@ -372,6 +385,8 @@ export default function SharePreviewScreen() {
               dateLabel={dateLabel}
               batting={batting}
               innings={innings}
+              selectedPlayerId={selectedPlayerId}
+              onSelectPlayer={setSelectedPlayerId}
             />
           </View>
         </ScrollView>

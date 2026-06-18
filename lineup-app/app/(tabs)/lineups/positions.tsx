@@ -7,7 +7,8 @@ import {
   ActivityIndicator,
   useWindowDimensions,
   ScrollView,
-  Alert,
+  Animated,
+  PanResponder,
 } from 'react-native';
 import Svg, { Polygon as SvgPolygon, Line, Path, Rect as SvgRect, Defs, ClipPath } from 'react-native-svg';
 import { Stack, useNavigation } from 'expo-router';
@@ -153,6 +154,52 @@ function serializeAssignments(assignments: Record<number, InningMap>): string {
   return JSON.stringify(result);
 }
 
+// ─── Read-only field panel (prev/next innings during swipe) ──────────────────
+
+function ReadOnlyFieldPanel({
+  assignments, containerW, activeFieldPositions, rosterPlayers,
+}: {
+  assignments: InningMap;
+  containerW: number;
+  activeFieldPositions: Array<{ key: string; cx: number; cy: number }>;
+  rosterPlayers: Player[];
+}) {
+  return (
+    <View style={{ width: containerW, height: CONTAINER_H, backgroundColor: '#15803D' }}>
+      <DiamondSvg width={containerW} height={CONTAINER_H} />
+      {activeFieldPositions.map(({ key: pos, cx, cy }) => {
+        const player = assignments[pos];
+        const left = containerW * (cx / 100) - BUTTON_W / 2;
+        const top  = CONTAINER_H * (cy / 100) - BUTTON_H / 2;
+        return (
+          <View
+            key={pos}
+            style={{
+              position: 'absolute', left, top,
+              width: BUTTON_W, height: BUTTON_H,
+              borderRadius: 8, borderWidth: 2, borderStyle: 'solid',
+              alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4,
+              overflow: 'hidden',
+              backgroundColor: player ? 'rgba(255,255,255,0.93)' : 'rgba(255,255,255,0.12)',
+              borderColor: player ? 'transparent' : 'rgba(255,255,255,0.45)',
+            }}
+          >
+            {player && <GenderCorner gender={playerGender(player)} size={12} />}
+            <Text style={{ fontSize: 10, fontWeight: '600', color: player ? '#6B7280' : 'rgba(255,255,255,0.75)' }}>
+              {pos}
+            </Text>
+            {player && (
+              <Text style={{ fontSize: 11, fontWeight: '700', color: '#111827' }} numberOfLines={1}>
+                {displayName(player, rosterPlayers)}
+              </Text>
+            )}
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function PositionsScreen() {
@@ -175,6 +222,40 @@ export default function PositionsScreen() {
   const savedAssignmentsJson = useRef<string>('{}');
   const hasUnsavedChanges = useRef(false);
   hasUnsavedChanges.current = serializeAssignments(inningAssignments) !== savedAssignmentsJson.current;
+
+  // Swipe-to-change-inning animation
+  const translateX = useRef(new Animated.Value(0)).current;
+  const currentInningRef = useRef(currentInning);
+  useEffect(() => { currentInningRef.current = currentInning; }, [currentInning]);
+  const containerWRef = useRef(containerW);
+  useEffect(() => { containerWRef.current = containerW; }, [containerW]);
+
+  const panResponder = useRef(PanResponder.create({
+    onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 15 && Math.abs(g.dy) < 10,
+    onPanResponderMove: (_, g) => {
+      const base = -(currentInningRef.current - 1) * containerWRef.current;
+      translateX.setValue(base + g.dx);
+    },
+    onPanResponderTerminate: () => {
+      const base = -(currentInningRef.current - 1) * containerWRef.current;
+      Animated.spring(translateX, { toValue: base, useNativeDriver: true }).start();
+    },
+    onPanResponderRelease: (_, g) => {
+      const cur  = currentInningRef.current;
+      const cw   = containerWRef.current;
+      const base = -(cur - 1) * cw;
+      const goNext = (g.dx < -60 || g.vx < -0.5) && cur < INNINGS_COUNT;
+      const goPrev = (g.dx >  60 || g.vx >  0.5) && cur > 1;
+      if (goNext || goPrev) {
+        const next = goNext ? cur + 1 : cur - 1;
+        Animated.timing(translateX, { toValue: -(next - 1) * cw, duration: 180, useNativeDriver: true }).start(() => {
+          switchInning(next);
+        });
+      } else {
+        Animated.spring(translateX, { toValue: base, useNativeDriver: true }).start();
+      }
+    },
+  })).current;
 
   useEffect(() => {
     const unsubscribe = navigation.addListener('beforeRemove', (e: any) => {
@@ -258,6 +339,11 @@ export default function PositionsScreen() {
     setInningAssignments(prev => prev[n] ? prev : { ...prev, [n]: emptyInning() });
   }
 
+  function navigateToInning(n: number) {
+    Animated.timing(translateX, { toValue: -(n - 1) * containerWRef.current, duration: 200, useNativeDriver: true }).start();
+    switchInning(n);
+  }
+
   function getPlayerPosition(playerId: string, inning: number): string | null {
     const inn = inningAssignments[inning];
     if (!inn) return null;
@@ -298,7 +384,7 @@ export default function PositionsScreen() {
         const n1 = set[i], n2 = set[i + 1];
         if (isInningFull(n1) && isInningFull(n2) &&
             !getPlayerPosition(player.id, n1) && !getPlayerPosition(player.id, n2)) {
-          warnings.push('Benched 2 consecutive innings');
+          warnings.push('Benched 2 consec. innings');
           break;
         }
       }
@@ -311,7 +397,7 @@ export default function PositionsScreen() {
         )
     )];
     if (avoidedPositions.length > 0) {
-      warnings.push(`Assigned to avoided position (${avoidedPositions.join(', ')})`);
+      warnings.push(`Avoid pos: ${avoidedPositions.join(', ')}`);
     }
     return warnings;
   }
@@ -321,7 +407,7 @@ export default function PositionsScreen() {
     const placed = Object.values(inningAssignments[inning]).filter(Boolean) as Player[];
     const warnings: string[] = [];
     if (placed.filter(p => playerGender(p) === 'M').length > maxMenField) {
-      warnings.push(`Too many men in field (max: ${maxMenField})`);
+      warnings.push(`Too many men (max ${maxMenField})`);
     }
     return warnings;
   }
@@ -427,7 +513,7 @@ export default function PositionsScreen() {
 
   const bannerWarnings: string[] = [];
   inningNums.forEach(n => {
-    getInningColWarnings(n).forEach(w => bannerWarnings.push(`Inning ${n}: ${w}`));
+    getInningColWarnings(n).forEach(w => bannerWarnings.push(`Inn ${n}: ${w}`));
   });
   rosterPlayers.forEach(p => {
     getPlayerRowWarnings(p).forEach(w => bannerWarnings.push(`${displayName(p, rosterPlayers)}: ${w}`));
@@ -485,7 +571,7 @@ export default function PositionsScreen() {
             return (
               <TouchableOpacity
                 key={n}
-                onPress={() => switchInning(n)}
+                onPress={() => navigateToInning(n)}
                 style={{
                   flex: 1, paddingVertical: 8, borderRadius: 8, alignItems: 'center',
                   backgroundColor: isCurrent ? '#2563EB' : 'white',
@@ -498,11 +584,25 @@ export default function PositionsScreen() {
           })}
         </View>
 
-        <Pressable
-          onPress={() => { setSelectedPos(null); setBenchSelectedPlayer(null); }}
-          className="bg-green-700 mx-4 rounded-2xl overflow-hidden"
-          style={{ height: CONTAINER_H, marginTop: 10 }}
+        <View style={{ marginHorizontal: 16, borderRadius: 16, height: CONTAINER_H, marginTop: 10, overflow: 'hidden', backgroundColor: '#15803D' }}
+          {...panResponder.panHandlers}
         >
+          <Animated.View style={{ transform: [{ translateX }], height: CONTAINER_H, flexDirection: 'row' }}>
+            {inningNums.map(n => n !== currentInning ? (
+              <ReadOnlyFieldPanel
+                key={n}
+                assignments={inningAssignments[n] ?? emptyInning()}
+                containerW={containerW}
+                activeFieldPositions={activeFieldPositions}
+                rosterPlayers={rosterPlayers}
+              />
+            ) : (
+            <Pressable
+              key={n}
+              onPress={() => { setSelectedPos(null); setBenchSelectedPlayer(null); }}
+              className="bg-green-700 overflow-hidden"
+              style={{ width: containerW, height: CONTAINER_H }}
+            >
           <DiamondSvg width={containerW} height={CONTAINER_H} />
           {rosterLoaded && activeFieldPositions.map(({ key, cx, cy }) => {
             const player       = assignments[key];
@@ -554,26 +654,27 @@ export default function PositionsScreen() {
               </TouchableOpacity>
             );
           })}
-        </Pressable>
+            </Pressable>
+            ))}
+          </Animated.View>
+        </View>
 
-        <TouchableOpacity
-          onPress={() => bannerWarnings.length > 0 && Alert.alert('Alignment Issues', bannerWarnings.join('\n\n'))}
-          activeOpacity={bannerWarnings.length > 0 ? 0.7 : 1}
-          style={{
-            flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+        <View style={{
             marginHorizontal: 16, marginTop: 6, marginBottom: 4,
             paddingVertical: 7, paddingHorizontal: 12, borderRadius: 8,
             backgroundColor: bannerWarnings.length > 0 ? '#FEF9C3' : '#F3F4F6',
             ...(bannerWarnings.length > 0 ? { borderWidth: 1, borderColor: '#FDE68A' } : {}),
           }}
         >
-          {bannerWarnings.length > 0 && <Text style={{ fontSize: 13 }}>⚠</Text>}
-          <Text style={{ fontSize: 12, color: bannerWarnings.length > 0 ? '#854D0E' : '#9CA3AF', textAlign: 'center' }}>
-            {bannerWarnings.length > 0
-              ? `${bannerWarnings.length} issue${bannerWarnings.length > 1 ? 's' : ''} — tap for details`
-              : hintText}
-          </Text>
-        </TouchableOpacity>
+          {bannerWarnings.length > 0 ? bannerWarnings.map((w, i) => (
+            <View key={i} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, marginTop: i > 0 ? 3 : 0 }}>
+              <Text style={{ fontSize: 12 }}>⚠</Text>
+              <Text style={{ fontSize: 12, color: '#854D0E' }} numberOfLines={1}>{w}</Text>
+            </View>
+          )) : (
+            <Text style={{ fontSize: 12, color: '#9CA3AF', textAlign: 'center' }}>{hintText}</Text>
+          )}
+        </View>
       </View>
 
       {/* ── Independently scrollable player table ────────────────────────── */}
