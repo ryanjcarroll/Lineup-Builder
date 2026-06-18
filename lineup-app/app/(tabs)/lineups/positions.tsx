@@ -9,7 +9,7 @@ import {
   ScrollView,
   Alert,
 } from 'react-native';
-import Svg, { Polygon as SvgPolygon, Line, Path, Rect as SvgRect } from 'react-native-svg';
+import Svg, { Polygon as SvgPolygon, Line, Path, Rect as SvgRect, Defs, ClipPath } from 'react-native-svg';
 import { Stack, useNavigation } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import GenderCorner from '../../../components/GenderCorner';
@@ -61,18 +61,30 @@ function DiamondSvg({ width, height }: { width: number; height: number }) {
   const bs = 10, bh = bs / 2;
   const rubberY = homeY - d * 1.2;
   const foulEdgeY = homeY - cx;
-  const arcY = 130 * s;
+  // Circular arc centered at home plate; equidistant from 1B/3B and 2B
+  const r        = d * 2.5;
+  const arcEndY  = homeY - r / Math.SQRT2;
+  const arcLX    = cx    - r / Math.SQRT2;
+  const arcRX    = cx    + r / Math.SQRT2;
+  const arcR     = r * 0.78; // smaller than r → more curved apex
+  const fairPts  = `${homeX},${homeY} ${width},${foulEdgeY} ${width},0 0,0 0,${foulEdgeY}`;
 
   return (
     <Svg width={width} height={height} style={{ position: 'absolute', top: 0, left: 0 }}>
-      <SvgPolygon points={`${homeX},${homeY} ${firstX},${firstY} ${secondX},${secondY} ${thirdX},${thirdY}`} fill="#7B5230" opacity={0.82} />
+      <Defs>
+        <ClipPath id="dp-fair">
+          <SvgPolygon points={fairPts} />
+        </ClipPath>
+      </Defs>
+      {/* Infield dirt fill — arc down to home, single layer so opacity is consistent */}
+      <Path d={`M ${arcLX},${arcEndY} A ${arcR},${arcR} 0 0 1 ${arcRX},${arcEndY} L ${homeX},${homeY} Z`} clipPath="url(#dp-fair)" fill="#7B5230" opacity={0.82} stroke="none" />
       <Line x1={homeX} y1={homeY} x2={width} y2={foulEdgeY} stroke="rgba(255,255,255,0.25)" strokeWidth={1.5} />
       <Line x1={homeX} y1={homeY} x2={0}     y2={foulEdgeY} stroke="rgba(255,255,255,0.25)" strokeWidth={1.5} />
       <Line x1={homeX}   y1={homeY}   x2={firstX}  y2={firstY}  stroke="rgba(255,255,255,0.55)" strokeWidth={1.5} />
       <Line x1={firstX}  y1={firstY}  x2={secondX} y2={secondY} stroke="rgba(255,255,255,0.55)" strokeWidth={1.5} />
       <Line x1={secondX} y1={secondY} x2={thirdX}  y2={thirdY}  stroke="rgba(255,255,255,0.55)" strokeWidth={1.5} />
       <Line x1={thirdX}  y1={thirdY}  x2={homeX}   y2={homeY}   stroke="rgba(255,255,255,0.55)" strokeWidth={1.5} />
-      <Path d={`M 5,${arcY} Q ${cx},2 ${width - 5},${arcY}`} stroke="rgba(255,255,255,0.4)" strokeWidth={1.5} fill="none" />
+      <Path d={`M ${arcLX},${arcEndY} A ${arcR},${arcR} 0 0 1 ${arcRX},${arcEndY}`} clipPath="url(#dp-fair)" stroke="rgba(255,255,255,0.4)" strokeWidth={1.5} fill="none" />
       <SvgRect x={cx - 5} y={rubberY - 2} width={10} height={4} fill="rgba(255,255,255,0.75)" rx={1} />
       <SvgRect x={firstX - bh}  y={firstY - bh}  width={bs} height={bs} fill="white" transform={`rotate(45,${firstX},${firstY})`} />
       <SvgRect x={secondX - bh} y={secondY - bh} width={bs} height={bs} fill="white" transform={`rotate(45,${secondX},${secondY})`} />

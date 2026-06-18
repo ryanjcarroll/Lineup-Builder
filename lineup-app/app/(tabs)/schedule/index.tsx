@@ -131,7 +131,7 @@ export default function ScheduleScreen() {
       if (!game) return;
       Alert.alert(
         'Remove Game',
-        `Remove game on ${formatDate(date)}?`,
+        `Remove game on ${formatDate(date)}? This will also delete the roster and any lineups for this game.`,
         [
           { text: 'Back', style: 'cancel' },
           { text: 'Remove', style: 'destructive', onPress: () => removeGame(game.id) },
@@ -230,7 +230,7 @@ export default function ScheduleScreen() {
                     onPress={() => {
                       Alert.alert(
                         'Remove Game',
-                        `Remove game on ${formatDate(game.date.slice(0, 10))}?`,
+                        `Remove game on ${formatDate(game.date.slice(0, 10))}? This will also delete the roster and any lineups for this game.`,
                         [
                           { text: 'Back', style: 'cancel' },
                           { text: 'Remove', style: 'destructive', onPress: () => removeGame(game.id) },

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, Alert, ActivityIndicator, TextInput, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Stack } from 'expo-router';
+import { Stack, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { User } from '@supabase/supabase-js';
 import * as ImagePicker from 'expo-image-picker';
@@ -90,6 +90,7 @@ export default function ProfileScreen() {
       if (error) throw error;
       setPhotoUrl(dataUrl);
       setProfile((prev) => prev ? { ...prev, photo_url: dataUrl } : null);
+      await fetchTeamByOwner();
     } catch (e) {
       Alert.alert('Upload failed', (e as any)?.message ?? 'Could not save photo.');
     } finally {
@@ -279,6 +280,22 @@ export default function ProfileScreen() {
               </View>
             </View>
           </View>
+
+          {/* DEV: lineup export prototype */}
+          <TouchableOpacity
+            onPress={() => router.push('/share-preview' as any)}
+            style={{
+              backgroundColor: '#1E293B', borderRadius: 16,
+              paddingHorizontal: 16, paddingVertical: 14, marginBottom: 12,
+              flexDirection: 'row', alignItems: 'center', gap: 10,
+            }}
+          >
+            <Ionicons name={'image-outline' as any} size={18} color="#60A5FA" />
+            <Text style={{ fontSize: 14, fontWeight: '600', color: '#60A5FA', flex: 1 }}>
+              [DEV] Lineup Export Preview
+            </Text>
+            <Ionicons name={'chevron-forward' as any} size={16} color="#60A5FA" />
+          </TouchableOpacity>
 
           {/* Sign out */}
           <TouchableOpacity

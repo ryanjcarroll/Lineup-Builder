@@ -237,7 +237,7 @@ export default function LineupsScreen() {
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: 16, fontWeight: '700', color: '#111827' }}>Game Roster</Text>
             <Text style={{ fontSize: 13, color: '#6B7280', marginTop: 2 }}>
-              {hasGame ? `Game on ${formatShortDate(selectedGame!.date.slice(0, 10))}` : 'Select a game above'}
+              {hasGame ? 'Choose which players are attending' : 'Select a game above'}
             </Text>
           </View>
           <StatusIcon status={selectedStatuses?.roster} roster />
@@ -261,7 +261,7 @@ export default function LineupsScreen() {
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: 16, fontWeight: '700', color: '#111827' }}>Batting Order</Text>
             <Text style={{ fontSize: 13, color: '#6B7280', marginTop: 2 }}>
-              {hasGame ? `Game on ${formatShortDate(selectedGame!.date.slice(0, 10))}` : 'Select a game above'}
+              {hasGame ? 'Set the hitting lineup' : 'Select a game above'}
             </Text>
           </View>
           <StatusIcon status={selectedStatuses?.batting} />
@@ -285,7 +285,7 @@ export default function LineupsScreen() {
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: 16, fontWeight: '700', color: '#111827' }}>Defensive Alignment</Text>
             <Text style={{ fontSize: 13, color: '#6B7280', marginTop: 2 }}>
-              {hasGame ? `Game on ${formatShortDate(selectedGame!.date.slice(0, 10))}` : 'Select a game above'}
+              {hasGame ? 'Assign positions by inning' : 'Select a game above'}
             </Text>
           </View>
           <StatusIcon status={selectedStatuses?.defensive} />
