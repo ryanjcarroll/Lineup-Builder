@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView,
   Alert, ActivityIndicator, Modal, TextInput,
-  KeyboardAvoidingView, Platform,
+  KeyboardAvoidingView, Platform, Image,
 } from 'react-native';
 import { Stack, useNavigation } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -130,6 +130,24 @@ function AddGhostForm({ onSubmit }: { onSubmit: (name: string, gender: 'M' | 'F'
           : <Text style={{ color: 'white', fontWeight: '700', fontSize: 16 }}>Add Ghost Batter</Text>}
       </TouchableOpacity>
     </>
+  );
+}
+
+// ─── Avatar ───────────────────────────────────────────────────────────────────
+
+function PlayerAvatar({ player, size = 36 }: { player: Player; size?: number }) {
+  const photo = player.profile?.photo_url;
+  const gender = playerGender(player);
+  const bg = gender === 'M' ? '#DBEAFE' : '#FCE7F3';
+  const textColor = gender === 'M' ? '#1D4ED8' : '#BE185D';
+  const initials = playerName(player).split(' ').filter(Boolean).map((w: string) => w[0]).slice(0, 2).join('').toUpperCase();
+  return (
+    <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: bg, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+      {photo
+        ? <Image source={{ uri: photo }} style={{ width: size, height: size }} />
+        : <Text style={{ fontSize: Math.round(size * 0.38), fontWeight: '700', color: textColor }}>{initials}</Text>
+      }
+    </View>
   );
 }
 
@@ -384,73 +402,75 @@ export default function BattingOrderScreen() {
             const isGhost      = !!player.is_ghost;
 
             return (
-              <TouchableOpacity
-                key={player.id}
-                onPress={() => handleSlotPress(index)}
-                activeOpacity={0.7}
-                style={{
-                  flexDirection: 'row', alignItems: 'center', overflow: 'hidden',
-                  backgroundColor: isSelected ? '#EFF6FF' : isGhost ? '#F5F3FF' : isViolating ? '#FEFCE8' : 'white',
-                  borderRadius: 12, marginBottom: 8, paddingHorizontal: 14, paddingVertical: 12,
-                  borderWidth: 1.5,
-                  borderColor: isSelected ? '#3B82F6' : isSwapTarget ? '#93C5FD' : isGhost ? '#C4B5FD' : isViolating ? '#FDE68A' : '#F3F4F6',
-                  ...(isSwapTarget ? { borderStyle: 'dashed' } : {}),
-                  ...(!isSelected && !isSwapTarget ? { borderLeftWidth: 4, borderLeftColor: playerGender(player) === 'M' ? '#3B82F6' : '#EC4899' } : {}),
-                }}
-              >
-                {/* Order badge */}
+              <View key={player.id} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                {/* Order badge — outside the card */}
                 <View style={{
-                  width: 32, height: 32, borderRadius: 16,
-                  backgroundColor: isSelected ? '#2563EB' : isGhost ? '#EDE9FE' : isViolating ? '#FEF08A' : '#F3F4F6',
-                  alignItems: 'center', justifyContent: 'center', marginRight: 12,
+                  width: 30, height: 30, borderRadius: 15,
+                  backgroundColor: isSelected ? '#2563EB' : isViolating ? '#FEF08A' : isGhost ? '#EDE9FE' : '#E5E7EB',
+                  alignItems: 'center', justifyContent: 'center', marginRight: 8,
                 }}>
                   <Text style={{
-                    fontWeight: '700', fontSize: 14,
-                    color: isSelected ? 'white' : isGhost ? '#7C3AED' : isViolating ? '#854D0E' : '#6B7280',
+                    fontWeight: '700', fontSize: 13,
+                    color: isSelected ? 'white' : isViolating ? '#854D0E' : isGhost ? '#7C3AED' : '#374151',
                   }}>
                     {index + 1}
                   </Text>
                 </View>
 
-                {/* Name + badges */}
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
-                  <Text style={{
-                    fontWeight: '600', fontSize: 16,
-                    color: isSelected ? '#1D4ED8' : isGhost ? '#6D28D9' : isViolating ? '#854D0E' : '#111827',
-                  }} numberOfLines={1}>
-                    {playerName(player)}
-                  </Text>
-                  {isSub && (
-                    <View style={{ backgroundColor: '#EDE9FE', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1 }}>
-                      <Text style={{ fontSize: 10, fontWeight: '700', color: '#7C3AED' }}>SUB</Text>
-                    </View>
-                  )}
-                  {isGhost && (
-                    <View style={{ backgroundColor: '#EDE9FE', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1 }}>
-                      <Text style={{ fontSize: 10, fontWeight: '700', color: '#7C3AED' }}>GHOST</Text>
-                    </View>
-                  )}
-                </View>
+                <TouchableOpacity
+                  onPress={() => handleSlotPress(index)}
+                  activeOpacity={0.7}
+                  style={{
+                    flex: 1, flexDirection: 'row', alignItems: 'center',
+                    backgroundColor: isSelected ? '#EFF6FF' : isGhost ? '#F5F3FF' : isViolating ? '#FEFCE8' : 'white',
+                    borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10,
+                    borderWidth: 1.5,
+                    borderLeftWidth: isSwapTarget ? 1.5 : 4,
+                    borderColor: isSelected ? '#3B82F6' : isSwapTarget ? '#93C5FD' : isGhost ? '#C4B5FD' : isViolating ? '#FDE68A' : '#F3F4F6',
+                    borderLeftColor: playerGender(player) === 'M' ? '#3B82F6' : '#EC4899',
+                    ...(isSwapTarget ? { borderStyle: 'dashed' } : {}),
+                  }}
+                >
+                  {/* Avatar */}
+                  <PlayerAvatar player={player} size={36} />
 
-                {/* Trailing icon */}
-                {isGhost && !isSelected && (
-                  <TouchableOpacity
-                    onPress={() => handleRemoveGhost(player.id)}
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                  >
-                    <Ionicons name={'close-circle-outline' as any} size={20} color="#A78BFA" />
-                  </TouchableOpacity>
-                )}
-                {isViolating && !isSelected && !isGhost && (
-                  <Ionicons name={'warning' as any} size={14} color="#CA8A04" />
-                )}
-                {isSelected && (
-                  <Ionicons name={'swap-vertical' as any} size={16} color="#2563EB" />
-                )}
-                {!isSelected && !isGhost && !isViolating && (
-                  <Ionicons name={'reorder-three-outline' as any} size={20} color="#D1D5DB" />
-                )}
-              </TouchableOpacity>
+                  {/* Name + badges */}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, marginLeft: 10 }}>
+                    <Text style={{
+                      fontWeight: '600', fontSize: 16,
+                      color: isSelected ? '#1D4ED8' : isGhost ? '#6D28D9' : isViolating ? '#854D0E' : '#111827',
+                    }} numberOfLines={1}>
+                      {playerName(player)}
+                    </Text>
+                    {isSub && (
+                      <View style={{ backgroundColor: '#EDE9FE', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1 }}>
+                        <Text style={{ fontSize: 10, fontWeight: '700', color: '#7C3AED' }}>SUB</Text>
+                      </View>
+                    )}
+                    {isGhost && (
+                      <View style={{ backgroundColor: '#EDE9FE', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1 }}>
+                        <Text style={{ fontSize: 10, fontWeight: '700', color: '#7C3AED' }}>GHOST</Text>
+                      </View>
+                    )}
+                  </View>
+
+                  {/* Trailing icon */}
+                  {isGhost && !isSelected && (
+                    <TouchableOpacity
+                      onPress={() => handleRemoveGhost(player.id)}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    >
+                      <Ionicons name={'close-circle-outline' as any} size={20} color="#A78BFA" />
+                    </TouchableOpacity>
+                  )}
+                  {isViolating && !isSelected && !isGhost && (
+                    <Ionicons name={'warning' as any} size={14} color="#CA8A04" />
+                  )}
+                  {isSelected && (
+                    <Ionicons name={'swap-vertical' as any} size={16} color="#2563EB" />
+                  )}
+                </TouchableOpacity>
+              </View>
             );
           })}
 

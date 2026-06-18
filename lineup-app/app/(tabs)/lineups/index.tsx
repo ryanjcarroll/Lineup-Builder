@@ -7,6 +7,7 @@ import { useGameStore } from '../../../stores/gameStore';
 import { useTeamStore } from '../../../stores/teamStore';
 import { DEFAULT_RULES } from '../../../components/EditRulesModal';
 import { supabase } from '../../../lib/supabase';
+import { playerGender } from '../../../types/database';
 
 
 const DEFENSIVE_COMPLETE_COUNT = 10;
@@ -37,7 +38,7 @@ interface GameStatuses {
 
 export default function LineupsScreen() {
   const { games, selectedGame, activeLineupId, loading, fetchGames, selectGame } = useGameStore();
-  const { team, fetchTeam, fetchTeamByOwner } = useTeamStore();
+  const { team, players: teamPlayers, fetchTeam, fetchTeamByOwner } = useTeamStore();
   const [gameStatuses, setGameStatuses] = useState<Record<string, GameStatuses>>({});
 
   useFocusEffect(useCallback(() => { if (team?.id) fetchGames(team.id); }, [team?.id]));
@@ -60,18 +61,20 @@ export default function LineupsScreen() {
     const [{ data: lineups }, { data: rosterRows }] = await Promise.all([
       (supabase.from('lineups') as any).select('id, game_id').in('game_id', gameIds),
       (supabase.from('game_roster') as any)
-        .select('game_id, players(gender, profiles(gender))')
+        .select('game_id, player_id')
         .in('game_id', gameIds),
     ]);
 
-    // Build per-game attendance stats for fielder calculation
+    // Build per-game attendance stats using team players already in store (avoids nested join)
+    const playerMap = new Map(teamPlayers.map((p) => [p.id, p]));
     const rosterStatsByGame = new Map<string, { total: number; women: number }>();
     (rosterRows as any[])?.forEach((r: any) => {
-      if (!r.players) return;
+      const p = playerMap.get(r.player_id);
+      if (!p) return;
       if (!rosterStatsByGame.has(r.game_id)) rosterStatsByGame.set(r.game_id, { total: 0, women: 0 });
       const s = rosterStatsByGame.get(r.game_id)!;
       s.total++;
-      if ((r.players.profiles?.gender ?? r.players.gender) === 'F') s.women++;
+      if (playerGender(p) === 'F') s.women++;
     });
 
     function gameRosterStatus(gameId: string): SlotStatus {
@@ -166,6 +169,11 @@ export default function LineupsScreen() {
 
   const hasGame = selectedGame !== null && activeLineupId !== null;
   const selectedStatuses = selectedGame ? gameStatuses[selectedGame.id] : undefined;
+  const rosterReady = hasGame
+    && (selectedStatuses?.roster === 'complete' || selectedStatuses?.roster === 'warning');
+  const shareReady = hasGame
+    && selectedStatuses?.batting === 'complete'
+    && selectedStatuses?.defensive === 'complete';
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#F9FAFB' }} edges={[]}>
@@ -223,7 +231,7 @@ export default function LineupsScreen() {
         {/* Game Roster */}
         <TouchableOpacity
           onPress={() => hasGame && router.push('/lineups/roster')}
-          activeOpacity={hasGame ? 0.7 : 1}
+          activeOpacity={hasGame ? 0.7 : 0.45}
           style={{
             backgroundColor: 'white', borderRadius: 16, padding: 20,
             borderWidth: 1, borderColor: '#F3F4F6',
@@ -237,7 +245,7 @@ export default function LineupsScreen() {
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: 16, fontWeight: '700', color: '#111827' }}>Game Roster</Text>
             <Text style={{ fontSize: 13, color: '#6B7280', marginTop: 2 }}>
-              {hasGame ? 'Choose which players are attending' : 'Select a game above'}
+              {hasGame ? 'Select attending players' : 'Select a game above'}
             </Text>
           </View>
           <StatusIcon status={selectedStatuses?.roster} roster />
@@ -246,13 +254,13 @@ export default function LineupsScreen() {
 
         {/* Batting Order */}
         <TouchableOpacity
-          onPress={() => hasGame && router.push('/lineups/batting')}
-          activeOpacity={hasGame ? 0.7 : 1}
+          onPress={() => rosterReady && router.push('/lineups/batting')}
+          activeOpacity={rosterReady ? 0.7 : 0.45}
           style={{
             backgroundColor: 'white', borderRadius: 16, padding: 20,
             borderWidth: 1, borderColor: '#F3F4F6',
             flexDirection: 'row', alignItems: 'center', gap: 16,
-            opacity: hasGame ? 1 : 0.45,
+            opacity: rosterReady ? 1 : 0.45,
           }}
         >
           <View style={{ width: 48, height: 48, backgroundColor: '#DBEAFE', borderRadius: 12, alignItems: 'center', justifyContent: 'center' }}>
@@ -261,22 +269,22 @@ export default function LineupsScreen() {
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: 16, fontWeight: '700', color: '#111827' }}>Batting Order</Text>
             <Text style={{ fontSize: 13, color: '#6B7280', marginTop: 2 }}>
-              {hasGame ? 'Set the hitting lineup' : 'Select a game above'}
+              {rosterReady ? 'Set the hitting lineup' : hasGame ? 'Set the game roster first' : 'Select a game above'}
             </Text>
           </View>
-          <StatusIcon status={selectedStatuses?.batting} />
+          <StatusIcon status={selectedStatuses?.batting} locked={!rosterReady} />
           <Ionicons name={'chevron-forward' as any} size={20} color="#D1D5DB" />
         </TouchableOpacity>
 
         {/* Defensive Alignment */}
         <TouchableOpacity
-          onPress={() => hasGame && router.push('/lineups/positions')}
-          activeOpacity={hasGame ? 0.7 : 1}
+          onPress={() => rosterReady && router.push('/lineups/positions')}
+          activeOpacity={rosterReady ? 0.7 : 0.45}
           style={{
             backgroundColor: 'white', borderRadius: 16, padding: 20,
             borderWidth: 1, borderColor: '#F3F4F6',
             flexDirection: 'row', alignItems: 'center', gap: 16,
-            opacity: hasGame ? 1 : 0.45,
+            opacity: rosterReady ? 1 : 0.45,
           }}
         >
           <View style={{ width: 48, height: 48, backgroundColor: '#DCFCE7', borderRadius: 12, alignItems: 'center', justifyContent: 'center' }}>
@@ -285,11 +293,38 @@ export default function LineupsScreen() {
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: 16, fontWeight: '700', color: '#111827' }}>Defensive Alignment</Text>
             <Text style={{ fontSize: 13, color: '#6B7280', marginTop: 2 }}>
-              {hasGame ? 'Assign positions by inning' : 'Select a game above'}
+              {rosterReady ? 'Assign positions by inning' : hasGame ? 'Set the game roster first' : 'Select a game above'}
             </Text>
           </View>
-          <StatusIcon status={selectedStatuses?.defensive} />
+          <StatusIcon status={selectedStatuses?.defensive} locked={!rosterReady} />
           <Ionicons name={'chevron-forward' as any} size={20} color="#D1D5DB" />
+        </TouchableOpacity>
+
+        {/* Share Lineup */}
+        <TouchableOpacity
+          onPress={() => shareReady && router.push('/share-preview')}
+          activeOpacity={shareReady ? 0.7 : 0.45}
+          style={{
+            backgroundColor: 'white', borderRadius: 16, padding: 20,
+            borderWidth: 1, borderColor: '#F3F4F6',
+            flexDirection: 'row', alignItems: 'center', gap: 16,
+            opacity: shareReady ? 1 : 0.45,
+          }}
+        >
+          <View style={{ width: 48, height: 48, backgroundColor: '#F3E8FF', borderRadius: 12, alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name={'share-social-outline' as any} size={26} color="#9333EA" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 16, fontWeight: '700', color: '#111827' }}>Share Lineup</Text>
+            <Text style={{ fontSize: 13, color: '#6B7280', marginTop: 2 }}>
+              {shareReady
+                ? 'Export lineup as an image'
+                : hasGame
+                  ? 'Complete batting & defense first'
+                  : 'Select a game above'}
+            </Text>
+          </View>
+          {shareReady && <Ionicons name={'chevron-forward' as any} size={20} color="#D1D5DB" />}
         </TouchableOpacity>
 
         </View>
@@ -299,18 +334,17 @@ export default function LineupsScreen() {
   );
 }
 
-function StatusIcon({ status, roster }: { status: SlotStatus | undefined; roster?: boolean }) {
+function StatusIcon({ status, locked, roster }: { status: SlotStatus | undefined; locked?: boolean; roster?: boolean }) {
   if (roster) {
     if (status === 'complete') return <Ionicons name={'checkmark-circle' as any} size={22} color="#16A34A" />;
     if (status === 'warning')  return <Ionicons name={'warning' as any}           size={20} color="#CA8A04" />;
     if (status === 'empty')    return <Ionicons name={'alert-circle' as any}      size={22} color="#DC2626" />;
     return null;
   }
-  if (status === 'complete') return <Ionicons name={'checkmark-circle' as any} size={22} color="#16A34A" />;
-  if (status === 'warning')  return <Ionicons name={'warning' as any}           size={20} color="#CA8A04" />;
-  if (status === 'partial')  return <Ionicons name={'create' as any}            size={20} color="#2563EB" />;
-  if (status === 'empty')    return <Ionicons name={'alert-circle' as any}      size={22} color="#DC2626" />;
-  return null;
+  if (locked)                  return null;
+  if (status === 'complete')   return <Ionicons name={'checkmark-circle' as any} size={22} color="#16A34A" />;
+  if (status === 'warning')    return <Ionicons name={'warning' as any}           size={20} color="#CA8A04" />;
+  return                              <Ionicons name={'create' as any}            size={20} color="#2563EB" />;
 }
 
 function formatShortDate(dateString: string): string {

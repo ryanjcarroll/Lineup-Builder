@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, ActivityIndicator,
-  Modal, TextInput, KeyboardAvoidingView, Platform, Alert, Image, Dimensions,
+  Modal, TextInput, KeyboardAvoidingView, Platform, Alert, Image, Dimensions, RefreshControl,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -880,6 +880,15 @@ export default function RosterScreen() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [codeCopied, setCodeCopied] = useState(false);
 
+  const [refreshing, setRefreshing] = useState(false);
+
+  async function handleRefresh() {
+    if (!team) return;
+    setRefreshing(true);
+    await fetchTeam(team.id);
+    setRefreshing(false);
+  }
+
   // Join flow
   type OnboardingView = 'fork' | 'create' | 'join-code' | 'join-claim';
   const [onboardingView, setOnboardingView] = useState<OnboardingView>('fork');
@@ -1145,7 +1154,7 @@ export default function RosterScreen() {
   }
 
   // ── Loading splash ─────────────────────────────────────────────────────────
-  if (loading) {
+  if (loading && !team) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: '#F9FAFB' }} edges={['top']}>
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
@@ -1449,6 +1458,13 @@ export default function RosterScreen() {
   // ── Normal team view ───────────────────────────────────────────────────────
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#F9FAFB' }} edges={['top']}>
+      <ScrollView
+        style={{ flex: 1 }}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#2563EB" colors={['#2563EB']} />
+        }
+      >
 
       {/* ── Team profile header ─────────────────────────────────────────── */}
       <View style={{ backgroundColor: 'white', borderBottomWidth: 1, borderBottomColor: '#F3F4F6' }}>
@@ -1557,7 +1573,7 @@ export default function RosterScreen() {
 
       {/* ── Player list ─────────────────────────────────────────────────── */}
       {error ? (
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 }}>
+        <View style={{ alignItems: 'center', justifyContent: 'center', padding: 32 }}>
           <Text style={{ color: '#DC2626', fontWeight: '500' }}>Failed to load roster</Text>
           <Text style={{ color: '#9CA3AF', fontSize: 13, marginTop: 4 }}>{error}</Text>
           <TouchableOpacity
@@ -1568,11 +1584,7 @@ export default function RosterScreen() {
           </TouchableOpacity>
         </View>
       ) : (
-        <ScrollView
-          style={{ flex: 1 }}
-          contentContainerStyle={{ paddingTop: 16, paddingBottom: 32 }}
-          showsVerticalScrollIndicator={false}
-        >
+        <View style={{ paddingTop: 16, paddingBottom: 32 }}>
           {[...players]
             .sort((a, b) => {
               const aCapt = a.user_id === team.owner_id ? 0 : 1;
@@ -1631,8 +1643,10 @@ export default function RosterScreen() {
                 />
               );
             })}
-        </ScrollView>
+        </View>
       )}
+
+      </ScrollView>
 
       {/* ── Edit self modal ─────────────────────────────────────────────── */}
       <EditPositionPrefsModal
