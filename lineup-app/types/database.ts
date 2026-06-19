@@ -59,6 +59,8 @@ export interface Game {
   start_time: string | null;
   location: string | null;
   innings_count: number;
+  defensive_mode: 'all_game' | 'per_inning' | 'grouped';
+  defensive_group_size: number;
   notes: string | null;
   roster_locked: boolean;
   created_at: string;

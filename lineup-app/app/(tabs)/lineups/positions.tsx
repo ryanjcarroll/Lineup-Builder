@@ -21,7 +21,6 @@ import { useGameStore } from '../../../stores/gameStore';
 import { supabase } from '../../../lib/supabase';
 import { Player, playerName, playerGender } from '../../../types/database';
 
-const INNINGS_COUNT = 6;
 const BUTTON_W  = 70;
 const BUTTON_H  = 48;
 const CONTAINER_H = 270;
@@ -155,6 +154,27 @@ function serializeAssignments(assignments: Record<number, InningMap>): string {
   return JSON.stringify(result);
 }
 
+// ─── Defensive mode helpers ───────────────────────────────────────────────────
+
+function computeVisibleInnings(mode: string, count: number, size: number): number[] {
+  if (mode === 'all_game') return [1];
+  if (mode === 'grouped') {
+    const reps: number[] = [];
+    for (let i = 1; i <= count; i += size) reps.push(i);
+    return reps;
+  }
+  return Array.from({ length: count }, (_, i) => i + 1);
+}
+
+function getInningLabel(inning: number, mode: string, groupSize: number, inningsCount: number): string {
+  if (mode === 'all_game') return 'All';
+  if (mode === 'grouped') {
+    const end = Math.min(inning + groupSize - 1, inningsCount);
+    return inning === end ? `${inning}` : `${inning}–${end}`;
+  }
+  return `${inning}`;
+}
+
 // ─── Read-only field panel (prev/next innings during swipe) ──────────────────
 
 function ReadOnlyFieldPanel({
@@ -210,6 +230,10 @@ export default function PositionsScreen() {
   const navigation = useNavigation();
   const { width: screenWidth } = useWindowDimensions();
   const containerW = screenWidth - HORIZONTAL_MARGIN;
+  const inningsCount = selectedGame?.innings_count ?? 6;
+  const defensiveMode = selectedGame?.defensive_mode ?? 'per_inning';
+  const groupSize = selectedGame?.defensive_group_size ?? 2;
+  const visibleInnings = computeVisibleInnings(defensiveMode, inningsCount, groupSize);
 
   const [rosterPlayers, setRosterPlayers] = useState<Player[]>([]);
   const [rosterLoaded, setRosterLoaded] = useState(false);
@@ -230,32 +254,50 @@ export default function PositionsScreen() {
   useEffect(() => { currentInningRef.current = currentInning; }, [currentInning]);
   const containerWRef = useRef(containerW);
   useEffect(() => { containerWRef.current = containerW; }, [containerW]);
+  const inningsCountRef = useRef(inningsCount);
+  useEffect(() => { inningsCountRef.current = inningsCount; }, [inningsCount]);
+  const visibleInningsRef = useRef(visibleInnings);
+  useEffect(() => {
+    visibleInningsRef.current = visibleInnings;
+    const newVisIdx = visibleInnings.indexOf(currentInningRef.current);
+    const step = containerWRef.current + PANEL_GAP;
+    if (newVisIdx === -1) {
+      translateX.setValue(0);
+      setCurrentInning(visibleInnings[0]);
+      currentInningRef.current = visibleInnings[0];
+    } else {
+      translateX.setValue(-newVisIdx * step);
+    }
+  }, [defensiveMode, groupSize, inningsCount]);
 
   const panResponder = useRef(PanResponder.create({
     onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 15 && Math.abs(g.dy) < 10,
     onPanResponderMove: (_, g) => {
+      const vis = visibleInningsRef.current;
+      const visIdx = vis.indexOf(currentInningRef.current);
       const step = containerWRef.current + PANEL_GAP;
-      const base = -(currentInningRef.current - 1) * step;
-      translateX.setValue(base + g.dx);
+      translateX.setValue(-visIdx * step + g.dx);
     },
     onPanResponderTerminate: () => {
+      const vis = visibleInningsRef.current;
+      const visIdx = vis.indexOf(currentInningRef.current);
       const step = containerWRef.current + PANEL_GAP;
-      const base = -(currentInningRef.current - 1) * step;
-      Animated.spring(translateX, { toValue: base, useNativeDriver: true }).start();
+      Animated.spring(translateX, { toValue: -visIdx * step, useNativeDriver: true }).start();
     },
     onPanResponderRelease: (_, g) => {
-      const cur  = currentInningRef.current;
+      const vis = visibleInningsRef.current;
+      const curVisIdx = vis.indexOf(currentInningRef.current);
       const step = containerWRef.current + PANEL_GAP;
-      const base = -(cur - 1) * step;
-      const goNext = (g.dx < -60 || g.vx < -0.5) && cur < INNINGS_COUNT;
-      const goPrev = (g.dx >  60 || g.vx >  0.5) && cur > 1;
+      const goNext = (g.dx < -60 || g.vx < -0.5) && curVisIdx < vis.length - 1;
+      const goPrev = (g.dx >  60 || g.vx >  0.5) && curVisIdx > 0;
       if (goNext || goPrev) {
-        const next = goNext ? cur + 1 : cur - 1;
-        Animated.timing(translateX, { toValue: -(next - 1) * step, duration: 180, useNativeDriver: true }).start(() => {
-          switchInning(next);
+        const nextVisIdx = goNext ? curVisIdx + 1 : curVisIdx - 1;
+        const nextInning = vis[nextVisIdx];
+        Animated.timing(translateX, { toValue: -nextVisIdx * step, duration: 180, useNativeDriver: true }).start(() => {
+          switchInning(nextInning);
         });
       } else {
-        Animated.spring(translateX, { toValue: base, useNativeDriver: true }).start();
+        Animated.spring(translateX, { toValue: -curVisIdx * step, useNativeDriver: true }).start();
       }
     },
   })).current;
@@ -318,7 +360,9 @@ export default function PositionsScreen() {
       .then(({ data }) => {
         if (!data || data.length === 0) return;
         const built: Record<number, InningMap> = {};
+        const activeKeys = new Set(activePositionKeys);
         data.forEach(({ inning, position, player_id }) => {
+          if (!activeKeys.has(position)) return;
           if (!built[inning]) built[inning] = emptyInning();
           const player = rosterPlayers.find((p) => p.id === player_id);
           if (player) built[inning][position] = player;
@@ -344,7 +388,8 @@ export default function PositionsScreen() {
 
   function navigateToInning(n: number) {
     const step = containerWRef.current + PANEL_GAP;
-    Animated.timing(translateX, { toValue: -(n - 1) * step, duration: 200, useNativeDriver: true }).start();
+    const visIdx = visibleInningsRef.current.indexOf(n);
+    Animated.timing(translateX, { toValue: -visIdx * step, duration: 200, useNativeDriver: true }).start();
     switchInning(n);
   }
 
@@ -355,7 +400,7 @@ export default function PositionsScreen() {
   }
 
   function getWarning(playerId: string): 'bench' | 'repeat' | null {
-    const set = Array.from({ length: INNINGS_COUNT }, (_, i) => i + 1).filter(n => !!inningAssignments[n]);
+    const set = visibleInnings.filter(n => !!inningAssignments[n]);
     if (set.length < 2) return null;
     for (let i = 0; i < set.length - 1; i++) {
       if (!getPlayerPosition(playerId, set[i]) && !getPlayerPosition(playerId, set[i + 1])) return 'bench';
@@ -375,13 +420,35 @@ export default function PositionsScreen() {
   const activePositionKeys = teamStrategies?.[fieldersAllowed] ?? DEFAULT_STRATEGIES[fieldersAllowed] ?? teamStrategies?.[maxField] ?? DEFAULT_STRATEGIES[maxField] ?? FIELD_POSITIONS.map(p => p.key);
   const activeFieldPositions = FIELD_POSITIONS.filter(p => activePositionKeys.includes(p.key));
 
+  // When the active position set shrinks (roster change), clear stale assignments so
+  // players aren't stuck assigned to positions that no longer appear on the field.
+  const activePositionKeysStr = activePositionKeys.join(',');
+  useEffect(() => {
+    const validKeys = new Set(activePositionKeysStr.split(','));
+    setInningAssignments(prev => {
+      let changed = false;
+      const next: Record<number, InningMap> = {};
+      for (const [innStr, map] of Object.entries(prev)) {
+        const cleanedMap = { ...map };
+        for (const pos of Object.keys(cleanedMap)) {
+          if (cleanedMap[pos] !== null && !validKeys.has(pos)) {
+            cleanedMap[pos] = null;
+            changed = true;
+          }
+        }
+        next[Number(innStr)] = cleanedMap;
+      }
+      return changed ? next : prev;
+    });
+  }, [activePositionKeysStr]);
+
   function isInningFull(inning: number): boolean {
     const inn = inningAssignments[inning];
     return !!inn && Object.values(inn).filter(Boolean).length === activeFieldPositions.length;
   }
 
   function getPlayerRowWarnings(player: Player): string[] {
-    const set = Array.from({ length: INNINGS_COUNT }, (_, i) => i + 1).filter(n => !!inningAssignments[n]);
+    const set = visibleInnings.filter(n => !!inningAssignments[n]);
     const warnings: string[] = [];
     if (set.length >= 2) {
       for (let i = 0; i < set.length - 1; i++) {
@@ -513,11 +580,10 @@ export default function PositionsScreen() {
   const isBenchMode      = benchSelectedPlayer !== null;
   const activePlayer     = isBenchMode ? benchSelectedPlayer : selectedPos ? assignments[selectedPos] : null;
   const selectedPlayerId = benchSelectedPlayer?.id ?? (selectedPos ? assignments[selectedPos]?.id : undefined);
-  const inningNums       = Array.from({ length: INNINGS_COUNT }, (_, i) => i + 1);
-
   const bannerWarnings: string[] = [];
-  inningNums.forEach(n => {
-    getInningColWarnings(n).forEach(w => bannerWarnings.push(`Inn ${n}: ${w}`));
+  visibleInnings.forEach(n => {
+    const label = getInningLabel(n, defensiveMode, groupSize, inningsCount);
+    getInningColWarnings(n).forEach(w => bannerWarnings.push(`Inn ${label}: ${w}`));
   });
   rosterPlayers.forEach(p => {
     getPlayerRowWarnings(p).forEach(w => bannerWarnings.push(`${displayName(p, rosterPlayers)}: ${w}`));
@@ -558,42 +624,53 @@ export default function PositionsScreen() {
 
       {/* ── Fixed top: tabs + diamond + hint ─────────────────────────────── */}
       <View>
-        <View style={{ flexDirection: 'row', marginHorizontal: 16, marginTop: 10, gap: 6 }}>
-          {inningNums.map(n => {
-            const isCurrent = n === currentInning;
-            const status = getInningStatus(n);
-            const borderColor = isCurrent ? '#2563EB'
-              : status === 'complete' ? '#16A34A'
-              : status === 'warn'     ? '#CA8A04'
-              : status === 'invalid'  ? '#DC2626'
-              : '#E5E7EB';
-            const textColor = isCurrent ? 'white'
-              : status === 'complete' ? '#16A34A'
-              : status === 'warn'     ? '#CA8A04'
-              : status === 'invalid'  ? '#DC2626'
-              : '#9CA3AF';
-            return (
-              <TouchableOpacity
-                key={n}
-                onPress={() => navigateToInning(n)}
-                style={{
-                  flex: 1, paddingVertical: 8, borderRadius: 8, alignItems: 'center',
-                  backgroundColor: isCurrent ? '#2563EB' : 'white',
-                  borderWidth: 1.5, borderColor,
-                }}
-              >
-                <Text style={{ fontSize: 14, fontWeight: '700', color: textColor }}>{n}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+        {visibleInnings.length > 1 && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={{ marginHorizontal: 16, marginTop: 10 }}
+            contentContainerStyle={{ flexDirection: 'row', gap: 6 }}
+          >
+            {visibleInnings.map(n => {
+              const isCurrent = n === currentInning;
+              const status = getInningStatus(n);
+              const label = getInningLabel(n, defensiveMode, groupSize, inningsCount);
+              const chipW = visibleInnings.length <= 6
+                ? (containerW - (visibleInnings.length - 1) * 6) / visibleInnings.length
+                : 52;
+              const borderColor = isCurrent ? '#2563EB'
+                : status === 'complete' ? '#16A34A'
+                : status === 'warn'     ? '#CA8A04'
+                : status === 'invalid'  ? '#DC2626'
+                : '#E5E7EB';
+              const textColor = isCurrent ? 'white'
+                : status === 'complete' ? '#16A34A'
+                : status === 'warn'     ? '#CA8A04'
+                : status === 'invalid'  ? '#DC2626'
+                : '#9CA3AF';
+              return (
+                <TouchableOpacity
+                  key={n}
+                  onPress={() => navigateToInning(n)}
+                  style={{
+                    width: chipW, paddingVertical: 8, borderRadius: 8, alignItems: 'center',
+                    backgroundColor: isCurrent ? '#2563EB' : 'white',
+                    borderWidth: 1.5, borderColor,
+                  }}
+                >
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: textColor }}>{label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        )}
 
-        <View style={{ marginHorizontal: 16, borderRadius: 16, height: CONTAINER_H, marginTop: 10, overflow: 'hidden', backgroundColor: 'white' }}
+        <View style={{ marginHorizontal: 16, borderRadius: 16, height: CONTAINER_H, marginTop: visibleInnings.length > 1 ? 10 : 6, overflow: 'hidden', backgroundColor: 'white' }}
           {...panResponder.panHandlers}
         >
           <Animated.View style={{ transform: [{ translateX }], height: CONTAINER_H, flexDirection: 'row' }}>
-            {inningNums.map(n => (
-              <View key={n} style={n > 1 ? { marginLeft: PANEL_GAP } : undefined}>
+            {visibleInnings.map((n, visIdx) => (
+              <View key={n} style={visIdx > 0 ? { marginLeft: PANEL_GAP } : undefined}>
                 {n !== currentInning ? (
                   <ReadOnlyFieldPanel
                     assignments={inningAssignments[n] ?? emptyInning()}
@@ -681,6 +758,18 @@ export default function PositionsScreen() {
             <Text style={{ fontSize: 12, color: '#9CA3AF', textAlign: 'center' }}>{hintText}</Text>
           )}
         </View>
+
+        {visibleInnings.length === 1 && (
+          <View style={{
+            marginHorizontal: 16, marginTop: 4, marginBottom: 4,
+            paddingVertical: 7, paddingHorizontal: 12, borderRadius: 8,
+            backgroundColor: '#F3F4F6',
+          }}>
+            <Text style={{ fontSize: 12, color: '#9CA3AF', textAlign: 'center' }}>
+              One alignment for all innings · adjust in Lineup settings ⚙
+            </Text>
+          </View>
+        )}
       </View>
 
       {/* ── Independently scrollable player table ────────────────────────── */}
@@ -690,10 +779,10 @@ export default function PositionsScreen() {
           <View style={{ width: NAME_COL_W }}>
             <Text className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Player</Text>
           </View>
-          {inningNums.map(n => (
+          {visibleInnings.length > 1 && visibleInnings.map(n => (
             <View key={n} style={{ flex: 1 }} className="items-center">
               <Text className={`text-xs font-semibold ${n === currentInning ? 'text-brand' : 'text-gray-400'}`}>
-                {n}
+                {getInningLabel(n, defensiveMode, groupSize, inningsCount)}
               </Text>
             </View>
           ))}
@@ -731,8 +820,8 @@ export default function PositionsScreen() {
                   </Text>
                 </View>
 
-                {/* Inning cells */}
-                {inningNums.map(n => {
+                {/* Inning cells — omitted when there is only one alignment */}
+                {visibleInnings.length > 1 && visibleInnings.map(n => {
                   const pos            = getPlayerPosition(player.id, n);
                   const isCellSelected = n === currentInning && player.id === selectedPlayerId;
                   const positionPref   = pos ? player.position_preferences?.find((pp) => pp.position === pos)?.preference : null;

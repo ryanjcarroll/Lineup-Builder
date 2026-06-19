@@ -6,12 +6,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { useGameStore } from '../../../stores/gameStore';
 import { useTeamStore } from '../../../stores/teamStore';
 import { DEFAULT_RULES } from '../../../components/EditRulesModal';
+import GameSettingsModal from '../../../components/GameSettingsModal';
 import { supabase } from '../../../lib/supabase';
 import { playerGender } from '../../../types/database';
 
 
-const DEFENSIVE_COMPLETE_COUNT = 10;
-const INNINGS_COUNT = 6;
 
 type SlotStatus = 'complete' | 'partial' | 'warning' | 'empty';
 
@@ -40,6 +39,7 @@ export default function LineupsScreen() {
   const { games, selectedGame, activeLineupId, loading, fetchGames, selectGame } = useGameStore();
   const { team, players: teamPlayers, fetchTeam, fetchTeamByOwner } = useTeamStore();
   const [gameStatuses, setGameStatuses] = useState<Record<string, GameStatuses>>({});
+  const [settingsVisible, setSettingsVisible] = useState(false);
 
   useFocusEffect(useCallback(() => { if (team?.id) fetchGames(team.id); }, [team?.id]));
   useFocusEffect(useCallback(() => { if (team?.id) fetchTeam(team.id); else fetchTeamByOwner(); }, [team?.id]));
@@ -77,10 +77,16 @@ export default function LineupsScreen() {
       if (playerGender(p) === 'F') s.women++;
     });
 
+    // fieldersAllowed varies by game: constrained by roster size + gender rules
+    const fieldersByGame = new Map<string, number>();
+    rosterStatsByGame.forEach((s, gameId) => {
+      fieldersByGame.set(gameId, Math.min(maxField, s.women + maxMenField, s.total));
+    });
+
     function gameRosterStatus(gameId: string): SlotStatus {
       const s = rosterStatsByGame.get(gameId);
       if (!s) return 'partial'; // no roster set up yet — show nothing
-      const fielders = Math.min(maxField, s.women + maxMenField, s.total);
+      const fielders = fieldersByGame.get(gameId) ?? maxField;
       if (s.total < minBatters) return 'empty';   // red: too few to play
       if (fielders < maxField)  return 'warning'; // yellow: gender constraint reduces fielders
       return 'complete';                           // green: full squad
@@ -104,6 +110,12 @@ export default function LineupsScreen() {
 
     // Use store players (already resolved: profile gender wins over player gender)
     const genderMap = new Map<string, string>(teamPlayers.map((p) => [p.id, playerGender(p)]));
+
+    const gameSettingsById = new Map(games.map((g) => [g.id, {
+      inningsCount:  g.innings_count        ?? 6,
+      defensiveMode: g.defensive_mode       ?? 'per_inning',
+      groupSize:     g.defensive_group_size ?? 2,
+    }]));
 
     const next: Record<string, GameStatuses> = {};
     (lineups as any[]).forEach(({ id: lineupId, game_id }: any) => {
@@ -135,19 +147,32 @@ export default function LineupsScreen() {
           inningMap.get(r.inning)!.push(r);
         });
 
+        const { inningsCount, defensiveMode, groupSize } = gameSettingsById.get(game_id)
+          ?? { inningsCount: 6, defensiveMode: 'per_inning', groupSize: 2 };
+
+        const requiredInnings: number[] =
+          defensiveMode === 'all_game' ? [1] :
+          defensiveMode === 'grouped'  ? Array.from(
+            { length: Math.ceil(inningsCount / groupSize) },
+            (_, i) => 1 + i * groupSize,
+          ) :
+          Array.from({ length: inningsCount }, (_, i) => i + 1);
+
+        const fieldersAllowed = fieldersByGame.get(game_id) ?? maxField;
         let hasErrors = false;
-        let filledInnings = 0;
-        inningMap.forEach((innSlots) => {
-          if (innSlots.length === DEFENSIVE_COMPLETE_COUNT) {
-            filledInnings++;
+        let filledCount = 0;
+        for (const n of requiredInnings) {
+          const innSlots = inningMap.get(n) ?? [];
+          if (innSlots.length === fieldersAllowed) {
+            filledCount++;
             const men = innSlots.filter((s: any) => genderMap.get(s.player_id) === 'M').length;
             if (men > maxMenField) hasErrors = true;
           }
-        });
+        }
 
         if (hasErrors) {
           defensive = 'warning';
-        } else if (filledInnings === INNINGS_COUNT) {
+        } else if (filledCount === requiredInnings.length) {
           defensive = 'complete';
         } else {
           defensive = 'partial';
@@ -216,9 +241,28 @@ export default function LineupsScreen() {
         )}
       </View>
 
+      {selectedGame && (
+        <GameSettingsModal
+          visible={settingsVisible}
+          onClose={() => setSettingsVisible(false)}
+          game={selectedGame}
+        />
+      )}
+
       {/* Lineup cards */}
       <View style={{ flex: 1, paddingHorizontal: 16 }}>
         <View style={{ flex: 1, justifyContent: 'center', gap: 12 }}>
+
+        {/* Game settings */}
+        <TouchableOpacity
+          onPress={() => hasGame && setSettingsVisible(true)}
+          activeOpacity={hasGame ? 0.7 : 0.4}
+          disabled={!hasGame}
+          hitSlop={{ top: 8, bottom: 8, left: 4, right: 12 }}
+          style={{ alignSelf: 'flex-start' }}
+        >
+          <Ionicons name={'settings-outline' as any} size={20} color={hasGame ? '#6B7280' : '#D1D5DB'} />
+        </TouchableOpacity>
 
         {/* Game Roster */}
         <TouchableOpacity

@@ -12,6 +12,7 @@ interface GameStore {
   addGame: (teamId: string, date: string, opts?: { opponent?: string; startTime?: string }) => Promise<void>;
   removeGame: (gameId: string) => Promise<void>;
   selectGame: (game: Game | null) => Promise<void>;
+  updateGame: (gameId: string, patch: Partial<Game>) => Promise<void>;
 }
 
 export const useGameStore = create<GameStore>((set, get) => ({
@@ -87,6 +88,14 @@ export const useGameStore = create<GameStore>((set, get) => ({
       .single();
 
     if (!error && created) set({ activeLineupId: created.id });
+  },
+
+  updateGame: async (gameId: string, patch: Partial<Game>) => {
+    set((s) => ({
+      games: s.games.map((g) => g.id === gameId ? { ...g, ...patch } : g),
+      selectedGame: s.selectedGame?.id === gameId ? { ...s.selectedGame, ...patch } : s.selectedGame,
+    }));
+    await supabase.from('games').update(patch).eq('id', gameId);
   },
 
 }));

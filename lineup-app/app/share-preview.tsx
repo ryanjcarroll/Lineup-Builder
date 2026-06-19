@@ -55,9 +55,10 @@ function shortName(name: string, allNames: string[]): string {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type BatterRow = { id: string; name: string; gender: 'M' | 'F' };
-type SlotData   = { display: string; playerId: string };
+type BatterRow   = { id: string; name: string; gender: 'M' | 'F' };
+type SlotData    = { display: string; playerId: string };
 type InningSlots = Record<string, SlotData>; // position key → { display, playerId }
+type InningSection = { label: string; slots: InningSlots }; // label = "1", "1–2", "All"
 
 // ─── Mini diamond SVG ─────────────────────────────────────────────────────────
 
@@ -75,7 +76,7 @@ const FIELD_POS = [
   { key: 'C',  fx: 0.50, fy: 0.93 },
 ] as const;
 
-function InningDiamond({ slots, w, h, id, selectedPlayerId }: { slots: InningSlots; w: number; h: number; id: string; selectedPlayerId?: string | null }) {
+function InningDiamond({ slots, w, h, id, selectedPlayerId, fontSize = 9 }: { slots: InningSlots; w: number; h: number; id: string; selectedPlayerId?: string | null; fontSize?: number }) {
   const cx = w / 2;
   const homeY  = h * 0.87;
   const d      = h * 0.185;
@@ -122,14 +123,14 @@ function InningDiamond({ slots, w, h, id, selectedPlayerId }: { slots: InningSlo
         if (!slot) return null;
         const highlighted = selectedPlayerId != null && slot.playerId === selectedPlayerId;
         const tx = fx * w;
-        const ty = fy * h + 3;
-        const hlW = slot.display.length * 5.5 + 10;
+        const ty = fy * h + Math.round(fontSize / 3);
+        const hlW = slot.display.length * (fontSize * 0.61) + fontSize + 1;
         return (
           <React.Fragment key={key}>
             {highlighted && (
               <SvgRect
-                x={tx - hlW / 2} y={ty - 9}
-                width={hlW} height={13}
+                x={tx - hlW / 2} y={ty - fontSize}
+                width={hlW} height={fontSize + 4}
                 rx={3} fill="#2563EB"
               />
             )}
@@ -137,7 +138,7 @@ function InningDiamond({ slots, w, h, id, selectedPlayerId }: { slots: InningSlo
               x={tx} y={ty}
               textAnchor="middle"
               fill="white"
-              fontSize={9}
+              fontSize={fontSize}
               fontWeight="700"
               opacity={highlighted ? 1 : 0.6}
             >
@@ -158,7 +159,7 @@ interface CardProps {
   opponent: string | null | undefined;
   dateLabel: string;
   batting: BatterRow[];
-  innings: InningSlots[];
+  innings: InningSection[];
   selectedPlayerId: string | null;
   onSelectPlayer: (id: string | null) => void;
 }
@@ -239,23 +240,31 @@ function LineupShareCard({ cardWidth, teamName, opponent, dateLabel, batting, in
           <Text style={{ fontSize: 13, color: C.muted }}>No defensive alignment set.</Text>
         ) : (
           <View style={{ gap: 10 }}>
-            {[0, 2, 4].map((start) => (
-              <View key={start} style={{ flexDirection: 'row', gap: 10 }}>
-                {innings.slice(start, start + 2).map((inning, j) => (
-                  <View key={j} style={{ width: dW }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 5 }}>
-                      <View style={{ width: 16, height: 16, borderRadius: 8, backgroundColor: C.surface, alignItems: 'center', justifyContent: 'center' }}>
-                        <Text style={{ fontSize: 8, fontWeight: '800', color: C.accent }}>{start + j + 1}</Text>
+            {(() => {
+              const single = innings.length === 1;
+              const rows: InningSection[][] = [];
+              for (let i = 0; i < innings.length; i += 2) rows.push(innings.slice(i, i + 2));
+              return rows.map((row, ri) => (
+                <View key={ri} style={{ flexDirection: 'row', gap: 10 }}>
+                  {row.map((section, j) => {
+                    const sw = single ? inner : dW;
+                    const sh = Math.round(sw * 0.72);
+                    const title = section.label === 'All' ? 'All Innings'
+                      : `Inning ${section.label}`;
+                    const titleFs = single ? 11 : 9;
+                    const labelFs = single ? 12 : 9;
+                    return (
+                      <View key={j} style={{ width: sw }}>
+                        <Text style={{ fontSize: titleFs, fontWeight: '600', color: C.mutedLt, letterSpacing: 0.5, marginBottom: 5 }}>
+                          {title}
+                        </Text>
+                        <InningDiamond slots={section.slots} w={sw} h={sh} id={`i${ri}-${j}`} selectedPlayerId={selectedPlayerId} fontSize={labelFs} />
                       </View>
-                      <Text style={{ fontSize: 9, fontWeight: '600', color: C.mutedLt, letterSpacing: 0.5 }}>
-                        Inning {start + j + 1}
-                      </Text>
-                    </View>
-                    <InningDiamond slots={inning} w={dW} h={dH} id={`i${start + j}`} selectedPlayerId={selectedPlayerId} />
-                  </View>
-                ))}
-              </View>
-            ))}
+                    );
+                  })}
+                </View>
+              ));
+            })()}
           </View>
         )}
       </View>
@@ -279,7 +288,7 @@ export default function SharePreviewScreen() {
   const { team, players } = useTeamStore();
   const { selectedGame, activeLineupId } = useGameStore();
   const [batting, setBatting] = useState<BatterRow[]>([]);
-  const [innings, setInnings] = useState<InningSlots[]>([]);
+  const [innings, setInnings] = useState<InningSection[]>([]);
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [capturing, setCapturing] = useState(false);
@@ -342,7 +351,26 @@ export default function SharePreviewScreen() {
         if (!innMap[row.inning]) innMap[row.inning] = {};
         innMap[row.inning][row.position] = { display: shortName(playerName(p), allNames), playerId: p.id };
       }
-      setInnings([1, 2, 3, 4, 5, 6].map((i) => innMap[i] ?? {}));
+
+      const mode   = selectedGame?.defensive_mode    ?? 'per_inning';
+      const gSize  = selectedGame?.defensive_group_size ?? 2;
+      const count  = selectedGame?.innings_count     ?? 6;
+
+      const visibleNums: number[] =
+        mode === 'all_game' ? [1] :
+        mode === 'grouped'  ? Array.from({ length: Math.ceil(count / gSize) }, (_, i) => 1 + i * gSize) :
+        Array.from({ length: count }, (_, i) => i + 1);
+
+      const sections: InningSection[] = visibleNums.map(n => {
+        const label = mode === 'all_game' ? 'All'
+          : mode === 'grouped' ? (() => {
+              const end = Math.min(n + gSize - 1, count);
+              return n === end ? `${n}` : `${n}–${end}`;
+            })()
+          : `${n}`;
+        return { label, slots: innMap[n] ?? {} };
+      });
+      setInnings(sections);
       setLoading(false);
     }
 
