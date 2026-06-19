@@ -1,4 +1,4 @@
-export type Sport = 'softball' | 'kickball';
+export type Sport = 'softball' | 'kickball' | 'baseball';
 export type Preference = 'preferred' | 'avoid';
 export type LineupStatus = 'draft' | 'generated' | 'approved';
 export type Gender = 'M' | 'F';

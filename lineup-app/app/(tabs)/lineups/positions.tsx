@@ -26,6 +26,7 @@ const BUTTON_W  = 70;
 const BUTTON_H  = 48;
 const CONTAINER_H = 270;
 const HORIZONTAL_MARGIN = 32;
+const PANEL_GAP = 12;
 const NAME_COL_W = 88;
 const WARN_COL_W = 22;
 const FIELD_POSITIONS = [
@@ -233,22 +234,24 @@ export default function PositionsScreen() {
   const panResponder = useRef(PanResponder.create({
     onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 15 && Math.abs(g.dy) < 10,
     onPanResponderMove: (_, g) => {
-      const base = -(currentInningRef.current - 1) * containerWRef.current;
+      const step = containerWRef.current + PANEL_GAP;
+      const base = -(currentInningRef.current - 1) * step;
       translateX.setValue(base + g.dx);
     },
     onPanResponderTerminate: () => {
-      const base = -(currentInningRef.current - 1) * containerWRef.current;
+      const step = containerWRef.current + PANEL_GAP;
+      const base = -(currentInningRef.current - 1) * step;
       Animated.spring(translateX, { toValue: base, useNativeDriver: true }).start();
     },
     onPanResponderRelease: (_, g) => {
       const cur  = currentInningRef.current;
-      const cw   = containerWRef.current;
-      const base = -(cur - 1) * cw;
+      const step = containerWRef.current + PANEL_GAP;
+      const base = -(cur - 1) * step;
       const goNext = (g.dx < -60 || g.vx < -0.5) && cur < INNINGS_COUNT;
       const goPrev = (g.dx >  60 || g.vx >  0.5) && cur > 1;
       if (goNext || goPrev) {
         const next = goNext ? cur + 1 : cur - 1;
-        Animated.timing(translateX, { toValue: -(next - 1) * cw, duration: 180, useNativeDriver: true }).start(() => {
+        Animated.timing(translateX, { toValue: -(next - 1) * step, duration: 180, useNativeDriver: true }).start(() => {
           switchInning(next);
         });
       } else {
@@ -340,7 +343,8 @@ export default function PositionsScreen() {
   }
 
   function navigateToInning(n: number) {
-    Animated.timing(translateX, { toValue: -(n - 1) * containerWRef.current, duration: 200, useNativeDriver: true }).start();
+    const step = containerWRef.current + PANEL_GAP;
+    Animated.timing(translateX, { toValue: -(n - 1) * step, duration: 200, useNativeDriver: true }).start();
     switchInning(n);
   }
 
@@ -584,21 +588,21 @@ export default function PositionsScreen() {
           })}
         </View>
 
-        <View style={{ marginHorizontal: 16, borderRadius: 16, height: CONTAINER_H, marginTop: 10, overflow: 'hidden', backgroundColor: '#15803D' }}
+        <View style={{ marginHorizontal: 16, borderRadius: 16, height: CONTAINER_H, marginTop: 10, overflow: 'hidden', backgroundColor: 'white' }}
           {...panResponder.panHandlers}
         >
           <Animated.View style={{ transform: [{ translateX }], height: CONTAINER_H, flexDirection: 'row' }}>
-            {inningNums.map(n => n !== currentInning ? (
-              <ReadOnlyFieldPanel
-                key={n}
-                assignments={inningAssignments[n] ?? emptyInning()}
-                containerW={containerW}
-                activeFieldPositions={activeFieldPositions}
-                rosterPlayers={rosterPlayers}
-              />
-            ) : (
+            {inningNums.map(n => (
+              <View key={n} style={n > 1 ? { marginLeft: PANEL_GAP } : undefined}>
+                {n !== currentInning ? (
+                  <ReadOnlyFieldPanel
+                    assignments={inningAssignments[n] ?? emptyInning()}
+                    containerW={containerW}
+                    activeFieldPositions={activeFieldPositions}
+                    rosterPlayers={rosterPlayers}
+                  />
+                ) : (
             <Pressable
-              key={n}
               onPress={() => { setSelectedPos(null); setBenchSelectedPlayer(null); }}
               className="bg-green-700 overflow-hidden"
               style={{ width: containerW, height: CONTAINER_H }}
@@ -655,6 +659,8 @@ export default function PositionsScreen() {
             );
           })}
             </Pressable>
+                )}
+              </View>
             ))}
           </Animated.View>
         </View>

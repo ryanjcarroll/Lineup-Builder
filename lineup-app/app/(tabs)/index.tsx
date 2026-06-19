@@ -73,17 +73,10 @@ function EditTeamModal({ visible, onClose, onSaved, isCaptain }: {
 }) {
   const { team, players, deleteTeam, fetchTeamByOwner } = useTeamStore();
   const [name, setName] = useState(team?.name ?? '');
+  const [sport, setSport] = useState<Sport>(team?.sport ?? 'softball');
   const [photoUrl, setPhotoUrl] = useState<string | null>(team?.photo_url ?? null);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [codeCopied, setCodeCopied] = useState(false);
-
-  async function handleCopyCode() {
-    if (!team?.invite_code) return;
-    await Clipboard.setStringAsync(team.invite_code);
-    setCodeCopied(true);
-    setTimeout(() => setCodeCopied(false), 2000);
-  }
 
   function handleDelete() {
     Alert.alert(
@@ -127,6 +120,7 @@ function EditTeamModal({ visible, onClose, onSaved, isCaptain }: {
   useEffect(() => {
     if (visible) {
       setName(team?.name ?? '');
+      setSport(team?.sport ?? 'softball');
       setPhotoUrl(team?.photo_url ?? null);
     }
   }, [visible]);
@@ -170,9 +164,13 @@ function EditTeamModal({ visible, onClose, onSaved, isCaptain }: {
     if (!name.trim()) return;
     setSaving(true);
     try {
-      await (supabase.from('teams') as any)
-        .update({ name: name.trim() })
+      const { error } = await (supabase.from('teams') as any)
+        .update({ name: name.trim(), sport })
         .eq('id', team!.id);
+      if (error) {
+        Alert.alert('Could not save', error.message);
+        return;
+      }
       onSaved();
       onClose();
     } finally {
@@ -241,26 +239,25 @@ function EditTeamModal({ visible, onClose, onSaved, isCaptain }: {
                 onSubmitEditing={handleSave}
               />
 
-              {team?.invite_code && (
-                <>
-                  <Text style={{ fontSize: 13, fontWeight: '600', color: '#374151', marginBottom: 6 }}>Invite Code</Text>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: '#374151', marginBottom: 8 }}>Sport</Text>
+              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 20 }}>
+                {(['softball', 'baseball', 'kickball'] as Sport[]).map((s) => (
                   <TouchableOpacity
-                    onPress={handleCopyCode}
-                    activeOpacity={0.7}
+                    key={s}
+                    onPress={() => setSport(s)}
                     style={{
-                      flexDirection: 'row', alignItems: 'center',
-                      backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#E5E7EB',
-                      borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12,
-                      marginBottom: 20,
+                      flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center',
+                      backgroundColor: sport === s ? '#2563EB' : '#F9FAFB',
+                      borderWidth: 1.5,
+                      borderColor: sport === s ? '#2563EB' : '#E5E7EB',
                     }}
                   >
-                    <Text style={{ flex: 1, fontSize: 16, fontWeight: '700', letterSpacing: 3, color: codeCopied ? '#16A34A' : '#374151' }}>
-                      {team.invite_code}
+                    <Text style={{ fontSize: 13, fontWeight: '600', textTransform: 'capitalize', color: sport === s ? 'white' : '#6B7280' }}>
+                      {s}
                     </Text>
-                    <Ionicons name={(codeCopied ? 'checkmark-circle' : 'copy-outline') as any} size={18} color={codeCopied ? '#16A34A' : '#6B7280'} />
                   </TouchableOpacity>
-                </>
-              )}
+                ))}
+              </View>
 
               <TouchableOpacity
                 onPress={handleSave}
@@ -851,9 +848,9 @@ function EditGhostPlayerModal({ visible, player, onClose, onSave }: {
 // ─── Main screen ──────────────────────────────────────────────────────────────
 
 const ACTIONS = [
+  { icon: 'create-outline',        label: 'Team Info'   },
   { icon: 'document-text-outline', label: 'Rules'       },
   { icon: 'map-outline',           label: 'Strategies'  },
-  { icon: 'create-outline',        label: 'Team Info'   },
 ] as const;
 
 export default function RosterScreen() {
@@ -957,8 +954,6 @@ export default function RosterScreen() {
     setTimeout(() => setCodeCopied(false), 2000);
   }
 
-  const maleCount   = players.filter((p) => p.gender === 'M').length;
-  const femaleCount = players.filter((p) => p.gender === 'F').length;
   const avatarColor = team ? getAvatarColor(team.name) : '#3B82F6';
   const amICaptain  = !!currentUserId && team?.owner_id === currentUserId;
 
@@ -1304,7 +1299,7 @@ export default function RosterScreen() {
                 />
                 <Text style={{ fontSize: 13, fontWeight: '600', color: '#374151', marginBottom: 10 }}>Sport</Text>
                 <View style={{ flexDirection: 'row', gap: 10, marginBottom: 32 }}>
-                  {(['softball', 'kickball'] as Sport[]).map((sport) => {
+                  {(['softball', 'baseball', 'kickball'] as Sport[]).map((sport) => {
                     const active = createSport === sport;
                     return (
                       <TouchableOpacity key={sport} onPress={() => setCreateSport(sport)} style={{ flex: 1, paddingVertical: 14, borderRadius: 12, alignItems: 'center', backgroundColor: active ? '#2563EB' : 'white', borderWidth: 1.5, borderColor: active ? '#2563EB' : '#E5E7EB' }}>
@@ -1520,10 +1515,7 @@ export default function RosterScreen() {
               </View>
             )}
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => setEditTeamOpen(true)} activeOpacity={0.7} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-            <Text style={{ fontSize: 22, fontWeight: '800', color: '#111827' }}>{team.name}</Text>
-            <Ionicons name={'pencil' as any} size={20} color="#9CA3AF" />
-          </TouchableOpacity>
+          <Text style={{ fontSize: 22, fontWeight: '800', color: '#111827', marginBottom: 8 }}>{team.name}</Text>
           {team.invite_code && (
             <TouchableOpacity
               onPress={handleCopyCode}
@@ -1544,7 +1536,7 @@ export default function RosterScreen() {
             </TouchableOpacity>
           )}
           <Text style={{ fontSize: 13, color: '#6B7280' }}>
-            {players.length} Players  |  {maleCount}M  {femaleCount}W
+            {players.length} Players
           </Text>
         </View>
       </View>

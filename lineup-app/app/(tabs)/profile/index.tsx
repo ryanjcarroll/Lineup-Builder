@@ -281,22 +281,6 @@ export default function ProfileScreen() {
             </View>
           </View>
 
-          {/* DEV: lineup export prototype */}
-          <TouchableOpacity
-            onPress={() => router.push('/share-preview' as any)}
-            style={{
-              backgroundColor: '#1E293B', borderRadius: 16,
-              paddingHorizontal: 16, paddingVertical: 14, marginBottom: 12,
-              flexDirection: 'row', alignItems: 'center', gap: 10,
-            }}
-          >
-            <Ionicons name={'image-outline' as any} size={18} color="#60A5FA" />
-            <Text style={{ fontSize: 14, fontWeight: '600', color: '#60A5FA', flex: 1 }}>
-              [DEV] Lineup Export Preview
-            </Text>
-            <Ionicons name={'chevron-forward' as any} size={16} color="#60A5FA" />
-          </TouchableOpacity>
-
           {/* Sign out */}
           <TouchableOpacity
             onPress={handleSignOut}

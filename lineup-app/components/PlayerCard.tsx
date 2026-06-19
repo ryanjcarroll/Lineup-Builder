@@ -63,7 +63,10 @@ export default function PlayerCard({ player, onEdit, isCaptain, isMe, isSelected
     <View className="bg-white rounded-xl mx-4 mb-3 shadow-sm" style={{
       borderWidth: isSelected ? 2 : 1,
       borderColor: isSelected ? '#2563EB' : '#F3F4F6',
-      ...(genderBorder && !isSelected ? { borderLeftWidth: 4, borderLeftColor: GENDER_BORDER_COLORS[displayGender] } : {}),
+      ...(genderBorder ? {
+        borderLeftWidth: 4,
+        borderLeftColor: GENDER_BORDER_COLORS[displayGender],
+      } : {}),
     }}>
       <View style={{ borderRadius: isSelected ? 11 : 12, overflow: 'hidden', backgroundColor: isSelected ? '#EFF6FF' : 'white' }}>
         {!genderBorder && <GenderCorner gender={displayGender} size={21} />}
@@ -74,10 +77,12 @@ export default function PlayerCard({ player, onEdit, isCaptain, isMe, isSelected
             alignItems: 'center', justifyContent: 'center',
             marginRight: 12, flexShrink: 0,
             overflow: 'hidden',
-            ...(isUnlinked && !isSelected ? { borderWidth: 1.5, borderStyle: 'dashed', borderColor: '#9CA3AF' } : {}),
+            borderWidth: isUnlinked && !isSelected ? 1.5 : 0,
+            borderStyle: isUnlinked && !isSelected ? 'dashed' : 'solid',
+            borderColor: '#9CA3AF',
           }}>
             {isSelected ? (
-              <Ionicons name={'checkmark' as any} size={22} color="white" />
+              <Ionicons name={'trash' as any} size={20} color="white" />
             ) : photoUrl ? (
               <Image source={{ uri: photoUrl }} style={{ width: 44, height: 44, borderRadius: 22 }} />
             ) : (
